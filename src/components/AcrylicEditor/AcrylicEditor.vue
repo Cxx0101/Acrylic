@@ -13,6 +13,14 @@ import purpleHookUrl from "./assets/purpleHook.png";
 const DEFAULTS = {
   border: 16,
   smooth: 5,
+  cutLine: 4,
+  dpi: 300,
+  stickerSize: 50,
+  interfaceTabEnabled: false,
+  interfaceGuideWidth: 300,
+  interfaceGuideHeight: 52,
+  interfaceTabWidth: 100,
+  interfaceTabHeight: 52,
   material: "glitter",
   density: 85,
   shine: 55,
@@ -144,6 +152,7 @@ export default {
       validator: (value) => ["full", "preview", "settings"].includes(value),
     },
     showHeader: { type: Boolean, default: true },
+    deferArtworkUpload: { type: Boolean, default: false },
     hookOptions: {
       type: Array,
       default: () =>
@@ -335,6 +344,13 @@ export default {
       const ranges = {
         border: [3, 25],
         smooth: [0, 12],
+        cutLine: [0, 100],
+        dpi: [1, 1200],
+        stickerSize: [1, 300],
+        interfaceGuideWidth: [1, 1200],
+        interfaceGuideHeight: [1, 500],
+        interfaceTabWidth: [1, 1200],
+        interfaceTabHeight: [1, 500],
         density: [10, 100],
         shine: [0, 80],
         intensity: [0, 100],
@@ -373,7 +389,7 @@ export default {
           !/^#[0-9a-f]{6}$/i.test(value)
         )
           return;
-        if (key === "hook") value = Boolean(value);
+        if (key === "hook" || key === "interfaceTabEnabled") value = Boolean(value);
         this.o[key] = value;
       });
     },
@@ -389,6 +405,15 @@ export default {
       }
       if (file.size > 20 * 1024 * 1024) {
         this.reportError(Error("请选择小于 20 MB 的图片。"));
+        return;
+      }
+      // In the combined workspace, the left upload feeds the design canvas.
+      // The effect preview is only replaced after the user applies that design.
+      if (this.deferArtworkUpload) {
+        this.filename = file.name;
+        this.dimensions = "";
+        this.$emit("upload", file);
+        if (this.$refs.fileInput) this.$refs.fileInput.value = "";
         return;
       }
       const engine = this.engine,
@@ -980,10 +1005,10 @@ export default {
               </button></template
             >
           </div>
-          <p class="hint">
+          <!-- <p class="hint">
             挂扣列表由 hook-options 数组生成；自定义挂扣建议使用透明背景
             PNG，并会随 JSON 一起保存。
-          </p>
+          </p> -->
         </section>
         <template v-if="!isPreview"
           ><section>
@@ -1027,7 +1052,76 @@ export default {
             </p>
           </section>
           <section>
-            <h2><span>03</span> 场景与位置</h2>
+            <h2><span>03</span> 图案工艺</h2>
+            <label class="number-setting"
+              >刀线(px)
+              <input
+                v-model.number="o.cutLine"
+                type="number"
+                min="0"
+                step="1"
+              /> </label
+            ><label class="number-setting"
+              >DPI
+              <input
+                v-model.number="o.dpi"
+                type="number"
+                min="1"
+                step="1"
+              /> </label
+            ><label class="number-setting"
+              >组件大小(px)
+              <input
+                v-model.number="o.stickerSize"
+                type="number"
+                min="1"
+                step="1"
+              />
+            </label
+            ><label class="toggle-label number-setting-toggle"
+              >启用底部插口
+              <input type="checkbox" v-model="o.interfaceTabEnabled" />
+            </label
+            ><label class="number-setting"
+              >插口范围宽(px)
+              <input
+                v-model.number="o.interfaceGuideWidth"
+                type="number"
+                min="1"
+                step="1"
+                :disabled="!o.interfaceTabEnabled"
+              /> </label
+            ><label class="number-setting"
+              >插口范围高(px)
+              <input
+                v-model.number="o.interfaceGuideHeight"
+                type="number"
+                min="1"
+                step="1"
+                :disabled="!o.interfaceTabEnabled"
+              /> </label
+            ><label class="number-setting"
+              >实体插口宽(px)
+              <input
+                v-model.number="o.interfaceTabWidth"
+                type="number"
+                min="1"
+                step="1"
+                :disabled="!o.interfaceTabEnabled"
+              /> </label
+            ><label class="number-setting"
+              >实体插口高(px)
+              <input
+                v-model.number="o.interfaceTabHeight"
+                type="number"
+                min="1"
+                step="1"
+                :disabled="!o.interfaceTabEnabled"
+              />
+            </label>
+          </section>
+          <section>
+            <h2><span>04</span> 场景与位置</h2>
             <label class="select-label"
               >场景模板<select
                 :value="scenePreset"
@@ -1105,7 +1199,7 @@ export default {
             </details>
           </section>
           <section>
-            <h2><span>04</span> 素材与方案</h2>
+            <h2><span>05</span> 素材与方案</h2>
             <p class="hint">
               导出的 JSON 会嵌入当前背景与挂扣，首页重新导入时会一起恢复。
             </p>
@@ -1152,11 +1246,14 @@ export default {
             </div></section
         ></template>
       </aside>
+      <section v-if="isPreview" class="design-canvas">
+        <slot name="design-canvas"></slot>
+      </section>
       <div class="workspace">
         <div class="workspace-top">
           <div>
             <span class="eyebrow">LIVE PREVIEW</span>
-            <h2>你的设计，正在成形</h2>
+            <!-- <h2>你的设计，正在成形</h2> -->
           </div>
           <button
             class="preview-badge detail-toggle"
@@ -1181,11 +1278,11 @@ export default {
             {{ error || "正在准备素材…" }}
           </div>
         </div>
-        <div class="preview-footer">
+        <!-- <div class="preview-footer">
           <span>✧ {{ materialLabel }}</span
           ><span>原图保留 · 自动异形轮廓</span>
-        </div>
-        <div class="bottom-settings">
+        </div> -->
+        <!-- <div class="bottom-settings">
           <label
             >场景背景<select
               v-model="o.background"
@@ -1207,14 +1304,14 @@ export default {
               <option value="jpeg">JPG</option>
             </select></label
           >
-        </div>
-        <p class="export-note">
+        </div> -->
+        <!-- <p class="export-note">
           图片仅在本机浏览器处理。导出清晰度受原图分辨率限制。{{
             exportFormat === "jpeg" && o.background === "transparent"
               ? "JPG 不支持透明背景，将导出白底。"
               : ""
           }}
-        </p>
+        </p> -->
       </div>
     </main>
     <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
