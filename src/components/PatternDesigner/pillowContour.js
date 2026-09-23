@@ -37,7 +37,10 @@ export function buildPillowSheetContour(file, options = {}, config = {}) {
     return Promise.reject(new Error("当前浏览器不支持 Web Worker"));
   }
 
-  const workerUrl = config.workerUrl || "/workers/pillow.worker.js";
+  // Follow the webpack public path so the worker resolves correctly both in
+  // dev (server root) and in production (/acrylic/ subdirectory).
+  const workerUrl =
+    config.workerUrl || `${__webpack_public_path__}workers/pillow.worker.js`;
   const onProgress =
     typeof config.onProgress === "function" ? config.onProgress : null;
   const jobId = makeJobId();

@@ -1,8 +1,9 @@
 const webpack=require('webpack');
-const base=require('../webpack.config');
+const buildConfig=require('../webpack.config');
 (async()=>{
  for(const mode of ['development','production']){
   await new Promise((resolve,reject)=>{
+   const base=buildConfig(undefined,{mode});
    const config={...base,mode,plugins:[...base.plugins]};
    if(mode==='development')config.plugins.push(new webpack.HotModuleReplacementPlugin());
    const compiler=webpack(config);
