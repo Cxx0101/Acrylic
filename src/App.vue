@@ -74,6 +74,7 @@ export default {
       editorOptions: null,
       editorReady: false,
       artworkObjectUrl: "",
+      boardUrls: [],
     };
   },
   computed: {
@@ -140,21 +141,41 @@ export default {
       if (this.$refs.designWorkspace)
         this.$refs.designWorkspace.setPatternFile(file);
     },
-    applyDesign({ blob, hole, shapeRegion }) {
-      if (!blob) return;
-      // The hole position must be registered before the artwork swap, so the
-      // editor derives it from the component position during the next load.
-      if (this.$refs.editor && this.$refs.editor.setDesignHole)
-        this.$refs.editor.setDesignHole(hole);
-      // The merged component area only extends the preview silhouette; the
-      // artwork itself stays unprinted over the added ear.
-      if (this.$refs.editor && this.$refs.editor.setDesignShapeRegion)
-        this.$refs.editor.setDesignShapeRegion(shapeRegion || null);
-      if (this.artworkObjectUrl) URL.revokeObjectURL(this.artworkObjectUrl);
-      this.artworkObjectUrl = URL.createObjectURL(blob);
-      this.artwork = this.artworkObjectUrl;
+    applyDesign({ boards }) {
+      if (!Array.isArray(boards) || !boards.length) return;
+      // Each plate gets its own object URL; the editor composites them by the
+      // per-plate assembly transform (offset / rotation / z).
+      this.revokeBoardUrls();
+      const list = boards.map((board) => {
+        const url = URL.createObjectURL(board.blob);
+        this.boardUrls.push(url);
+        return {
+          id: board.id,
+          src: url,
+          hole: board.hole || null,
+          shapeRegion: board.shapeRegion || null,
+          transform: board.transform || null,
+        };
+      });
+      if (this.$refs.editor && this.$refs.editor.setBoards) {
+        this.$refs.editor.setBoards(list);
+      } else if (list[0]) {
+        // Fallback for a single-plate editor build.
+        this.setSingleArtwork(list[0]);
+      }
       this.editorReady = false;
       if (this.$route.path !== "/") this.$router.push("/");
+    },
+    setSingleArtwork(item) {
+      if (this.$refs.editor && this.$refs.editor.setDesignHole)
+        this.$refs.editor.setDesignHole(item.hole);
+      if (this.$refs.editor && this.$refs.editor.setDesignShapeRegion)
+        this.$refs.editor.setDesignShapeRegion(item.shapeRegion);
+      this.artwork = item.src;
+    },
+    revokeBoardUrls() {
+      this.boardUrls.forEach((url) => URL.revokeObjectURL(url));
+      this.boardUrls = [];
     },
     downloadImage() {
       this.$refs.editor.download();
@@ -168,6 +189,7 @@ export default {
   },
   beforeDestroy() {
     if (this.artworkObjectUrl) URL.revokeObjectURL(this.artworkObjectUrl);
+    this.revokeBoardUrls();
   },
 };
 </script>

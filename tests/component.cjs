@@ -3,7 +3,7 @@ const source=fs.readFileSync('src/components/AcrylicEditor/AcrylicEditor.vue','u
 const sfc=compiler.parseComponent(source),compiled=compiler.compile(sfc.template.content);
 assert.deepStrictEqual(compiled.errors,[],'Vue 2 template compilation failed');new Function(compiled.render);
 assert(sfc.styles.every(s=>s.scoped),'Component styles must be scoped');
-const script=sfc.script.content.replace(/^import[^;]*;\n/gm,'').replace('export default {','module.exports = {');
+const script=sfc.script.content.replace(/^import[^;]*;\r?\n/gm,'').replace('export default {','module.exports = {');
 const context={module:{exports:{}},artworkUrl:'artwork.png',backgroundUrl:'background.png',hookUrl:'hook.png',redHookUrl:'redHook.png',blueHookUrl:'blueHook.png',greenHookUrl:'greenHook.png',purpleHookUrl:'purpleHook.png',glitterUrl:'glitter.png',reflectionUrl:'reflection.png',setTimeout,clearTimeout,console,loadImage:()=>Promise.reject(new Error('test'))};vm.createContext(context);vm.runInContext(script,context);
 const Component=Vue.extend(context.module.exports),a=new Component({propsData:{initialOptions:{material:'frost',intensity:999},hookOptions:[{id:'gold',label:'金色挂扣',type:'builtin'},{id:'off',label:'无挂扣',type:'none'}]}}),b=new Component();
 assert.strictEqual(a.o.material,'frost');assert.strictEqual(a.o.intensity,100);assert.strictEqual(b.o.material,'glitter');
