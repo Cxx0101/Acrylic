@@ -26,15 +26,12 @@ function drawTransformed(ctx,source,o){
 const scale=(o.productScale == null ? 100 : o.productScale)/100;
 ctx.save();ctx.translate(SIZE/2+(o.productX||0),SIZE/2+(o.productY||0));ctx.rotate((o.productRotation||0)*Math.PI/180);ctx.scale(scale,scale);ctx.translate(-SIZE/2,-SIZE/2);ctx.drawImage(source,0,0);ctx.restore();
 }
-export function render(target,assets,art,o,shape){
-const n=SIZE,x=target.getContext('2d'),{mask,rect,hx,hy}=shape;
+// Draws one plate's product layer (material, print, bevel, sheen, hook) onto a
+// fresh 500x500 canvas. No background and no ground shadow: those belong to the
+// scene, so several plates can share one composited scene.
+export function renderProduct(assets,art,o,shape){
+const n=SIZE,product=canvas(),p=product.getContext('2d'),{mask,rect,hx,hy}=shape;
 const strength=(o.intensity == null ? 80 : o.intensity)/100,thickness=(o.thickness == null ? 4 : o.thickness),shine=o.shine/100;
-x.setTransform(target.width/n,0,0,target.height/n,0,0);x.clearRect(0,0,n,n);
-if(o.background==='scene')x.drawImage(assets.background,0,0,n,n);else if(o.background==='white'){x.fillStyle='#f7f7f5';x.fillRect(0,0,n,n)}
-const product=canvas(),p=product.getContext('2d');
-if(o.background!=='transparent'){
-const shadow=canvas(),sh=shadow.getContext('2d');sh.globalAlpha=(o.shadowOpacity == null ? 20 : o.shadowOpacity)/100;sh.filter=`blur(${o.shadowBlur == null ? 5 : o.shadowBlur}px)`;sh.drawImage(colored(mask,'#43392c'),o.shadowX == null ? -7 : o.shadowX,o.shadowY == null ? 8 : o.shadowY);drawTransformed(x,shadow,o);
-}
 const sideColor=o.material==='tinted'?o.tint:o.material==='pearl'?'#8a9cab':'#7b9599';
 p.save();p.globalAlpha=.5;p.drawImage(rim(mask,thickness*.6,thickness,sideColor,true),0,0);p.restore();
 p.drawImage(rim(mask,thickness*.6+.5,thickness+.7,'rgba(236,251,255,.75)',true),0,0);
@@ -71,6 +68,29 @@ const g=s.createLinearGradient(left,top,left+w,top+h*.45);g.addColorStop(0,'rgba
 // Print remains opaque; reflections over the print are attenuated.
 s.globalCompositeOperation='destination-out';s.globalAlpha=.72;s.drawImage(art.img,...art.box,...rect);s.globalAlpha=1;s.globalCompositeOperation='source-over';clip(sheen,mask);p.drawImage(sheen,0,0);
 if(o.hook){const hh=235,hw=hh*assets.hook.width/assets.hook.height;p.drawImage(assets.hook,hx-hw/2,hy-hh*.885,hw,hh)}
-drawTransformed(x,product,o);
+return product;
+}
+// Merges a plate's own placement (offset/rotation/scale/z) with the shared
+// scene placement. A null transform returns the scene placement untouched, so
+// the single-plate path stays identical to the pre-refactor render().
+export function combineTransform(scene,transform){
+if(!transform)return scene;
+return Object.assign({},scene,{productX:(scene.productX||0)+(transform.offsetX||0),productY:(scene.productY||0)+(transform.offsetY||0),productScale:(scene.productScale==null?100:scene.productScale)*(transform.scale==null?1:transform.scale),productRotation:(scene.productRotation||0)+(transform.rotation||0)});
+}
+// Scene compositor: paints the background once, then each plate's shadow and
+// product, ordered by transform.z (default 0, stable). items are
+// [{ art, o, shape, transform }]; o falls back to the shared scene options.
+export function composeScene(target,assets,sceneO,items){
+const n=SIZE,x=target.getContext('2d');
+x.setTransform(target.width/n,0,0,target.height/n,0,0);x.clearRect(0,0,n,n);
+if(sceneO.background==='scene')x.drawImage(assets.background,0,0,n,n);else if(sceneO.background==='white'){x.fillStyle='#f7f7f5';x.fillRect(0,0,n,n)}
+const list=items.slice().sort((a,b)=>((a.transform&&a.transform.z)||0)-((b.transform&&b.transform.z)||0));
+for(let i=0;i<list.length;i++){const it=list[i],o=it.o||sceneO,tf=combineTransform(sceneO,it.transform);
+if(sceneO.background!=='transparent'){const shadow=canvas(),sh=shadow.getContext('2d');sh.globalAlpha=(o.shadowOpacity == null ? 20 : o.shadowOpacity)/100;sh.filter=`blur(${o.shadowBlur == null ? 5 : o.shadowBlur}px)`;sh.drawImage(colored(it.shape.mask,'#43392c'),o.shadowX == null ? -7 : o.shadowX,o.shadowY == null ? 8 : o.shadowY);drawTransformed(x,shadow,tf);}
+drawTransformed(x,renderProduct(assets,it.art,o,it.shape),tf);}
 x.setTransform(1,0,0,1,0,0);
+}
+// Back-compat single-plate entry point; identical output to before the split.
+export function render(target,assets,art,o,shape){
+composeScene(target,assets,o,[{art,o,shape,transform:null}]);
 }
