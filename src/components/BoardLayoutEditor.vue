@@ -289,7 +289,7 @@ export default {
   background: #fafcfb;
   color: #4a5652;
   border-radius: 7px;
-  padding: 5px 10px;
+  padding:  10px;
   cursor: pointer;
   font-size: 12px;
 }
