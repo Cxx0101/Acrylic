@@ -716,8 +716,7 @@ export default {
       ];
       const item = { name, options: {} };
       keys.forEach((k) => {
-        item.options[k] =
-          k === "material" ? this.o[k] : this.boardEditingO[k];
+        item.options[k] = k === "material" ? this.o[k] : this.boardEditingO[k];
       });
       const index = this.customPresets.findIndex((p) => p.name === name);
       if (index >= 0) this.customPresets.splice(index, 1, item);
@@ -1192,14 +1191,26 @@ export default {
             </button>
           </div>
           <template v-if="!isPreview">
+            <div class="asset-grid">
+              <label
+                >背景<input
+                  type="file"
+                  accept="image/*"
+                  @change="
+                    uploadAsset('background', $event.target.files[0]);
+                    $event.target.value = '';
+                  "
+              /></label>
+            </div>
             <details class="advanced" open>
-              <summary
-                >自定义材质参数{{
+              <summary>
+                自定义材质参数{{
                   boardEditingName ? " · " + boardEditingName : ""
-                }}</summary
-              >
+                }}
+              </summary>
               <label v-if="o.material === 'tinted'" class="color-label"
-                >板材颜色 <input type="color" v-model="boardEditingO.tint" /></label
+                >板材颜色
+                <input type="color" v-model="boardEditingO.tint" /></label
               ><label class="color-label"
                 >叠加底色
                 <span
@@ -1256,13 +1267,13 @@ export default {
                   v-model.number="boardEditingO.shine"
               /></label>
             </details>
-            <div class="preset-save">
+            <!-- <div class="preset-save">
               <input
                 v-model.trim="presetName"
                 maxlength="24"
                 placeholder="材质预设名称"
               /><button @click="saveMaterialPreset">保存材质</button>
-            </div>
+            </div> -->
             <div v-if="customPresets.length" class="preset-list">
               <span v-for="(preset, index) in customPresets" :key="preset.name"
                 ><button @click="applyMaterialPreset(preset)">
@@ -1477,11 +1488,11 @@ export default {
             </details>
           </section>
           <section>
-            <h2><span>05</span> 素材与方案</h2>
+            <!-- <h2><span>05</span> 素材与方案</h2>
             <p class="hint">
               导出的 JSON 会嵌入当前背景与挂扣，首页重新导入时会一起恢复。
-            </p>
-            <div class="asset-grid">
+            </p> -->
+            <!-- <div class="asset-grid">
               <label
                 >背景<input
                   type="file"
@@ -1489,16 +1500,18 @@ export default {
                   @change="
                     uploadAsset('background', $event.target.files[0]);
                     $event.target.value = '';
-                  " /></label
-              ><label
+                  "
+              /></label>
+              <label
                 >亮片纹理<input
                   type="file"
                   accept="image/*"
                   @change="
                     uploadAsset('glitter', $event.target.files[0]);
                     $event.target.value = '';
-                  " /></label
-              ><label
+                  "
+              /></label>
+              <label
                 >反光纹理<input
                   type="file"
                   accept="image/*"
@@ -1507,11 +1520,11 @@ export default {
                     $event.target.value = '';
                   "
               /></label>
-            </div>
-            <button class="reset-assets" @click="resetAllAssets">
+            </div> -->
+            <!-- <button class="reset-assets" @click="resetAllAssets">
               恢复内置素材
-            </button>
-            <div class="config-actions">
+            </button> -->
+            <!-- <div class="config-actions">
               <button @click="exportConfig">导出完整方案</button
               ><button @click="$refs.configInput.click()">导入方案</button
               ><input
@@ -1521,7 +1534,7 @@ export default {
                 accept="application/json,.json"
                 @change="importConfig($event.target.files[0])"
               />
-            </div>
+            </div> -->
           </section>
         </template>
       </aside>

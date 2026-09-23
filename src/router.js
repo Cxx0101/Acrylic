@@ -1,15 +1,15 @@
 import Vue from 'vue';
 import VueRouter from 'vue-router';
+import PreviewPage from './pages/PreviewPage.vue';
+import SettingsPage from './pages/SettingsPage.vue';
 
 Vue.use(VueRouter);
-
-const EmptyRoute={render:h=>h('span',{style:{display:'none'}})};
 
 export default new VueRouter({
   mode:'hash',
   routes:[
-    {path:'/',component:EmptyRoute,meta:{page:'preview'}},
-    {path:'/settings',component:EmptyRoute,meta:{page:'settings'}},
+    {path:'/',component:PreviewPage,meta:{page:'preview'}},
+    {path:'/settings',component:SettingsPage,meta:{page:'settings'}},
     {path:'*',redirect:'/'}
   ]
 });
