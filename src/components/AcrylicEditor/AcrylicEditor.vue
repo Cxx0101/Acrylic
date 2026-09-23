@@ -4,6 +4,7 @@ import {
   prepareArt,
   makeShape,
   render,
+  composeScene,
   holeOffsetsFromPoint,
 } from "./render";
 import artworkUrl from "./assets/artwork.png";
@@ -235,6 +236,9 @@ export default {
       assetOverrides: {},
       assetData: { background: null, hook: null },
       assetNames: { background: "background.png", hook: "hook.png" },
+      boards: [],
+      boardConfigs: null,
+      boardShapeRegionUrls: [],
       art: null,
       artVersion: 0,
       shape: null,
@@ -267,6 +271,13 @@ export default {
     this.engine.loadId++;
     clearTimeout(this.engine.timer);
     clearTimeout(this.engine.noticeTimer);
+    if (this.engine.designShapeRegionUrl)
+      URL.revokeObjectURL(this.engine.designShapeRegionUrl);
+    (this.engine.boardShapeRegionUrls || []).forEach((url) =>
+      URL.revokeObjectURL(url),
+    );
+    this.engine.boardShapeRegionUrls = [];
+    this.engine.designShapeRegionUrl = null;
     this.closeLargeView();
   },
   methods: {
@@ -288,23 +299,54 @@ export default {
             assets[name] = await loadImage(urls[name], this.crossOrigin);
           }),
         );
-        const img = await loadImage(this.src || artworkUrl, this.crossOrigin);
-        if (img.width * img.height > 25000000)
-          throw Error("图片过大，请缩小到 2500 万像素以内。");
-        let shapeRegionImg = null;
-        if (engine.designShapeRegionUrl) {
-          try {
-            shapeRegionImg = await loadImage(
-              engine.designShapeRegionUrl,
-              this.crossOrigin,
-            );
-          } catch (e) {
-            shapeRegionImg = null;
+        // Multi-plate: boardConfigs carries one entry per plate (set via
+        // setBoards). Without it we build a single plate from the `src` prop,
+        // keeping the legacy path byte-identical.
+        const configs =
+          engine.boardConfigs && engine.boardConfigs.length
+            ? engine.boardConfigs
+            : [
+                {
+                  id: "b0",
+                  src: this.src || artworkUrl,
+                  hole: engine.designHole,
+                  shapeRegionUrl: engine.designShapeRegionUrl,
+                  transform: null,
+                },
+              ];
+        const boards = [];
+        for (const cfg of configs) {
+          const source = cfg.src || this.src || artworkUrl;
+          const img = await loadImage(source, this.crossOrigin);
+          if (img.width * img.height > 25000000)
+            throw Error("图片过大，请缩小到 2500 万像素以内。");
+          let shapeRegionImg = null;
+          if (cfg.shapeRegionUrl) {
+            try {
+              shapeRegionImg = await loadImage(
+                cfg.shapeRegionUrl,
+                this.crossOrigin,
+              );
+            } catch (e) {
+              shapeRegionImg = null;
+            }
           }
           if (engine.destroyed || id !== engine.loadId) return;
+          const art = prepareArt(img);
+          if (shapeRegionImg) art.shapeRegion = shapeRegionImg;
+          boards.push({
+            id: cfg.id || "b" + boards.length,
+            hole: cfg.hole || null,
+            shapeRegionUrl: cfg.shapeRegionUrl || null,
+            transform: cfg.transform || null,
+            art,
+            artVersion: (engine.artVersion = engine.artVersion + 1),
+            shapeKey: "",
+            shape: null,
+            width: img.width,
+            height: img.height,
+          });
         }
-        const art = prepareArt(img);
-        if (shapeRegionImg) art.shapeRegion = shapeRegionImg;
         if (engine.destroyed || id !== engine.loadId) return;
         engine.builtinAssets = assets;
         engine.assets = Object.assign({}, assets, engine.assetOverrides);
@@ -321,14 +363,14 @@ export default {
             }
           }
         });
-        engine.art = art;
-        engine.artVersion++;
-        engine.shapeKey = "";
-        // The design canvas owns the hole position: derive it from where the
-        // component sits on the artwork instead of the settings defaults.
-        this.applyDesignHole(art);
+        engine.boards = boards;
+        // Legacy single-plate path: the design canvas owns the hole position,
+        // so derive it into the shared options (drives the settings hint).
+        if (boards.length === 1 && !boards[0].hole) {
+          this.applyDesignHole(boards[0].art);
+        }
         this.filename = this.src ? "传入的图片" : "切图_05.png";
-        this.dimensions = img.width + " × " + img.height;
+        this.dimensions = boards[0].width + " × " + boards[0].height;
         this.ready = true;
         await this.$nextTick();
         if (engine.destroyed || id !== engine.loadId) return;
@@ -348,29 +390,75 @@ export default {
     redraw() {
       if (!this.ready || this.engine.destroyed || !this.$refs.preview) return;
       try {
-        const key = [
-          this.engine.artVersion,
-          this.o.border,
-          this.o.smooth,
-          this.o.holeX,
-          this.o.holeY,
-          this.o.holeShape,
-          this.o.hook,
-        ].join("|");
-        if (key !== this.engine.shapeKey) {
-          this.engine.shape = makeShape(this.engine.art, this.o);
-          this.engine.shapeKey = key;
-        }
-        render(
-          this.$refs.preview,
-          this.engine.assets,
-          this.engine.art,
-          this.o,
-          this.engine.shape,
-        );
+        const items = this.engine.boards.map((board) => {
+          const blockO = this.blockOptions(board);
+          const key = [
+            board.artVersion,
+            blockO.border,
+            blockO.smooth,
+            blockO.holeX,
+            blockO.holeY,
+            blockO.holeShape,
+            blockO.hook,
+          ].join("|");
+          if (key !== board.shapeKey) {
+            board.shape = makeShape(board.art, blockO);
+            board.shapeKey = key;
+          }
+          return {
+            art: board.art,
+            o: blockO,
+            shape: board.shape,
+            transform: board.transform,
+          };
+        });
+        composeScene(this.$refs.preview, this.engine.assets, this.o, items);
       } catch (e) {
         this.reportError(e);
       }
+    },
+    // Per-plate options: the shared scene options plus this plate's own hole
+    // mapping. A plate without a design hole (the legacy single-plate case)
+    // returns the shared options object untouched, so nothing shifts.
+    blockOptions(board, base) {
+      const shared = base || this.o;
+      if (!board || !board.hole || !board.art || !board.art.box) return shared;
+      const offsets = holeOffsetsFromPoint(board.art.box, board.hole);
+      return Object.assign({}, shared, {
+        holeX: offsets.holeX,
+        holeY: offsets.holeY,
+        holeShape: board.hole.shape === "square" ? "square" : "ring",
+      });
+    },
+    // Public API: replace the scene's plates. Each item is
+    // { id?, src, hole?, shapeRegion?, transform? }; shapeRegion is a Blob.
+    // An empty list resets to the single-plate `src` prop.
+    setBoards(list) {
+      const engine = this.engine;
+      (engine.boardShapeRegionUrls || []).forEach((url) =>
+        URL.revokeObjectURL(url),
+      );
+      engine.boardShapeRegionUrls = [];
+      if (!Array.isArray(list) || !list.length) {
+        engine.boardConfigs = null;
+        this.initialize();
+        return;
+      }
+      engine.boardConfigs = list.map((item, i) => {
+        let shapeRegionUrl = null;
+        if (item.shapeRegion instanceof Blob) {
+          shapeRegionUrl = URL.createObjectURL(item.shapeRegion);
+          engine.boardShapeRegionUrls.push(shapeRegionUrl);
+        }
+        return {
+          id: item.id || "b" + i,
+          src: item.src,
+          hole: item.hole || null,
+          shapeRegionUrl,
+          transform: item.transform || null,
+        };
+      });
+      this.initialize();
     },
     // Receives the component position picked on the design canvas, expressed
     // in the pixel space of the artwork blob that is about to be applied.
@@ -499,9 +587,22 @@ export default {
           throw Error("图片过大，请缩小到 2500 万像素以内。");
         const candidate = prepareArt(img);
         if (engine.destroyed || id !== engine.loadId) return;
-        engine.art = candidate;
+        engine.boards = [
+          {
+            id: "b0",
+            hole: null,
+            shapeRegionUrl: null,
+            transform: null,
+            art: candidate,
+            artVersion: engine.artVersion + 1,
+            shapeKey: "",
+            shape: null,
+            width: img.width,
+            height: img.height,
+          },
+        ];
         engine.artVersion++;
-        engine.shapeKey = "";
+        engine.boardConfigs = null;
         // A directly uploaded PNG has no design-canvas component; fall back
         // to the manual hole settings.
         engine.designHole = null;
@@ -845,8 +946,16 @@ export default {
           const opts = Object.assign({}, this.o);
           if (format === "jpeg" && opts.background === "transparent")
             opts.background = "white";
-          const shape = makeShape(this.engine.art, opts);
-          render(c, this.engine.assets, this.engine.art, opts, shape);
+          const items = this.engine.boards.map((board) => {
+            const blockO = this.blockOptions(board, opts);
+            return {
+              art: board.art,
+              o: blockO,
+              shape: makeShape(board.art, blockO),
+              transform: board.transform,
+            };
+          });
+          composeScene(c, this.engine.assets, opts, items);
           c.toBlob(
             (blob) =>
               blob
@@ -897,11 +1006,14 @@ export default {
       return { x: rx / scale + 250, y: ry / scale + 250 };
     },
     dragStart(e) {
-      if (!this.o.hook || !this.ready || !this.engine.shape) return;
+      if (!this.o.hook || !this.ready) return;
+      const shapes = this.engine.boards.map((b) => b.shape).filter(Boolean);
+      if (!shapes.length) return;
       const p = this.position(e);
-      if (
-        Math.hypot(p.x - this.engine.shape.hx, p.y - this.engine.shape.hy) < 35
-      ) {
+      const hit = shapes.some(
+        (s) => Math.hypot(p.x - s.hx, p.y - s.hy) < 35,
+      );
+      if (hit) {
         this.dragging = true;
         e.target.setPointerCapture(e.pointerId);
       }
