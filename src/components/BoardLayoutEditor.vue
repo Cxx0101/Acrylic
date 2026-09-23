@@ -3,7 +3,10 @@
     <div
       v-for="board in boards"
       :key="board.id"
-      :class="['board-placeholder', { selected: board.id === selectedId }]"
+      :class="[
+        'board-placeholder',
+        { selected: board.id === selectedId, 'board-placeholder--svg': Boolean(board.cutlineSvg) },
+      ]"
       :style="placeholderStyle(board)"
       @pointerdown.stop.prevent="startDrag(board, $event)"
     >
@@ -19,6 +22,22 @@
         @click="removeBoard"
       >
         删除
+      </button>
+      <label class="board-tool board-tool--file">
+        上传刀线 SVG
+        <input
+          accept=".svg,image/svg+xml"
+          type="file"
+          @change="onSvgFile($event.target.files[0]); $event.target.value = ''"
+        />
+      </label>
+      <button
+        v-if="selected && selected.cutlineSvg"
+        type="button"
+        class="board-tool"
+        @click="removeCutline"
+      >
+        移除刀线
       </button>
       <template v-if="selected">
         <label class="board-prop">
@@ -75,6 +94,29 @@
 const BASE_W = 200;
 // 板体经 makeShape 适配后的最大高度（fit 上限 220），占位框 = 板体可能区域。
 const BASE_H = 220;
+// 读取 SVG 根节点的物理尺寸（支持 mm/cm/in/px），随方案 JSON 传给设计端做标注。
+function readSvgSize(svgText) {
+  const root = new DOMParser().parseFromString(svgText, "image/svg+xml")
+    .documentElement;
+  const viewBox = (root.getAttribute("viewBox") || "")
+    .trim()
+    .split(/[ ,]+/)
+    .map(Number);
+  const parse = (value, fallback) => {
+    const match = (value || "").match(/^\s*([\d.]+)\s*(mm|cm|in|px)?/i);
+    return match
+      ? { value: Number(match[1]), unit: (match[2] || "px").toLowerCase() }
+      : { value: fallback, unit: "px" };
+  };
+  const width = parse(root.getAttribute("width"), viewBox[2] || 0);
+  const height = parse(root.getAttribute("height"), viewBox[3] || 0);
+  return {
+    width: width.value,
+    height: height.value,
+    widthUnit: width.unit,
+    heightUnit: height.unit,
+  };
+}
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 2.5;
 let boardSeq = 0;
@@ -134,8 +176,24 @@ export default {
       return wrap ? wrap.querySelector("canvas") : null;
     },
     placeholderStyle(board) {
-      const w = BASE_W * this.sceneScale * board.scale;
-      const h = BASE_H * this.sceneScale * board.scale;
+      // SVG 刀线板块：占位区域按 SVG 宽高比适配到基准可能区域内。
+      let baseW = BASE_W;
+      let baseH = BASE_H;
+      if (
+        board.cutlineSvg &&
+        board.svgAspect &&
+        board.svgAspect.w &&
+        board.svgAspect.h
+      ) {
+        const fit = Math.min(
+          BASE_W / board.svgAspect.w,
+          BASE_H / board.svgAspect.h,
+        );
+        baseW = board.svgAspect.w * fit;
+        baseH = board.svgAspect.h * fit;
+      }
+      const w = baseW * this.sceneScale * board.scale;
+      const h = baseH * this.sceneScale * board.scale;
       return {
         left: (board.x / 5) + "%",
         top: (board.y / 5) + "%",
@@ -211,6 +269,39 @@ export default {
       const index = this.boards.indexOf(this.selected);
       if (index >= 0) this.boards.splice(index, 1);
       this.selectedId = this.boards.length ? this.boards[0].id : null;
+      this.emitChange();
+    },
+    // 上传刀线 SVG：原文随方案 JSON 走，设计端用 demo-2 方式出图；
+    // 占位区域按 SVG 宽高比适配（先按根节点尺寸，再以渲染尺寸兜底）。
+    onSvgFile(file) {
+      const board = this.selected;
+      if (!board || !file) return;
+      if (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") return;
+      file.text().then((text) => {
+        const size = readSvgSize(text);
+        board.cutlineSvg = text;
+        board.cutlineName = file.name;
+        board.sourceSize = size;
+        board.svgAspect = { w: size.width || 100, h: size.height || 100 };
+        this.emitChange();
+        const image = new Image();
+        image.onload = () => {
+          board.svgAspect = {
+            w: image.naturalWidth || board.svgAspect.w,
+            h: image.naturalHeight || board.svgAspect.h,
+          };
+          this.emitChange();
+        };
+        image.src = "data:image/svg+xml;utf8," + encodeURIComponent(text);
+      });
+    },
+    removeCutline() {
+      const board = this.selected;
+      if (!board) return;
+      this.$delete(board, "cutlineSvg");
+      this.$delete(board, "cutlineName");
+      this.$delete(board, "sourceSize");
+      this.$delete(board, "svgAspect");
       this.emitChange();
     },
     setProp(key, value) {
@@ -296,6 +387,27 @@ export default {
 .board-tool:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.board-tool--file {
+  position: relative;
+  overflow: hidden;
+  color: #2a7d6e;
+  border-color: #8fb3aa;
+  user-select: none;
+}
+.board-tool--file input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.board-placeholder--svg {
+  border-style: solid;
+  border-color: #8fb3aa;
+  background: rgba(255, 255, 255, 0.5);
 }
 .board-prop {
   display: flex;

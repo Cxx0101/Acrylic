@@ -21,7 +21,17 @@
       :key="board.id"
       :class="['board-pane', { active: board.id === activeBoardId }]"
     >
+      <!-- SVG 刀线板块：设计画布切换为 demo-2 的「图片按刀线裁剪」流程 -->
+      <SvgCutlineDesigner
+        v-if="board.cutlineSvg"
+        :ref="'designer-' + board.id"
+        :cutline-svg="board.cutlineSvg"
+        :source-size="board.sourceSize || {}"
+        :can-apply="Boolean(canApplyMap[board.id])"
+        @apply-design="onApplyDesign()"
+      />
       <PatternDesigner
+        v-else
         :ref="'designer-' + board.id"
         :embedded="embedded"
         :can-apply="Boolean(canApplyMap[board.id])"
@@ -43,10 +53,11 @@
 
 <script>
 import PatternDesigner from "./PatternDesigner/PatternDesigner.vue";
+import SvgCutlineDesigner from "./SvgCutlineDesigner.vue";
 
 export default {
   name: "DesignWorkspace",
-  components: { PatternDesigner },
+  components: { PatternDesigner, SvgCutlineDesigner },
   props: {
     embedded: { type: Boolean, default: false },
     // 设置页导出的板块布局（BoardLayoutEditor 的产出）。为空时回退到单块默认，
