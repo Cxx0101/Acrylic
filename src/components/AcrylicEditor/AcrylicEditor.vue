@@ -1,5 +1,11 @@
 <script>
-import { loadImage, prepareArt, makeShape, render } from "./render";
+import {
+  loadImage,
+  prepareArt,
+  makeShape,
+  render,
+  holeOffsetsFromPoint,
+} from "./render";
 import artworkUrl from "./assets/artwork.png";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
@@ -16,6 +22,7 @@ const DEFAULTS = {
   cutLine: 4,
   dpi: 300,
   stickerSize: 50,
+  specSize: 10,
   interfaceTabEnabled: false,
   interfaceGuideWidth: 300,
   interfaceGuideHeight: 52,
@@ -33,6 +40,7 @@ const DEFAULTS = {
   textureOpacity: 100,
   holeX: 0,
   holeY: 0,
+  holeShape: "ring",
   hook: true,
   background: "scene",
   productX: 0,
@@ -170,15 +178,20 @@ export default {
       o: Object.assign({}, DEFAULTS),
       materials: MATERIALS,
       scenes: SCENES,
+      specSizes: [5, 10, 20],
       scenePreset: "studio",
       detail: false,
       exportSize: 1500,
       exportFormat: "png",
       dragging: false,
+      largeViewUrl: null,
       presetName: "",
       customPresets: [],
       hookName: "橙色挂扣",
       selectedHookId: "orange",
+      // True while the current artwork carries a design-canvas-derived hole
+      // position; the settings sliders are then replaced by a hint.
+      holeFromDesign: false,
     };
   },
   computed: {
@@ -230,6 +243,7 @@ export default {
       noticeTimer: null,
       loadId: 0,
       destroyed: false,
+      designShapeRegionUrl: null,
     };
     const builtin = this.hookOptions.find((item) => item.type === "builtin");
     if (builtin) {
@@ -253,6 +267,7 @@ export default {
     this.engine.loadId++;
     clearTimeout(this.engine.timer);
     clearTimeout(this.engine.noticeTimer);
+    this.closeLargeView();
   },
   methods: {
     reportError(e) {
@@ -276,7 +291,20 @@ export default {
         const img = await loadImage(this.src || artworkUrl, this.crossOrigin);
         if (img.width * img.height > 25000000)
           throw Error("图片过大，请缩小到 2500 万像素以内。");
+        let shapeRegionImg = null;
+        if (engine.designShapeRegionUrl) {
+          try {
+            shapeRegionImg = await loadImage(
+              engine.designShapeRegionUrl,
+              this.crossOrigin,
+            );
+          } catch (e) {
+            shapeRegionImg = null;
+          }
+          if (engine.destroyed || id !== engine.loadId) return;
+        }
         const art = prepareArt(img);
+        if (shapeRegionImg) art.shapeRegion = shapeRegionImg;
         if (engine.destroyed || id !== engine.loadId) return;
         engine.builtinAssets = assets;
         engine.assets = Object.assign({}, assets, engine.assetOverrides);
@@ -296,6 +324,9 @@ export default {
         engine.art = art;
         engine.artVersion++;
         engine.shapeKey = "";
+        // The design canvas owns the hole position: derive it from where the
+        // component sits on the artwork instead of the settings defaults.
+        this.applyDesignHole(art);
         this.filename = this.src ? "传入的图片" : "切图_05.png";
         this.dimensions = img.width + " × " + img.height;
         this.ready = true;
@@ -323,6 +354,7 @@ export default {
           this.o.smooth,
           this.o.holeX,
           this.o.holeY,
+          this.o.holeShape,
           this.o.hook,
         ].join("|");
         if (key !== this.engine.shapeKey) {
@@ -340,6 +372,43 @@ export default {
         this.reportError(e);
       }
     },
+    // Receives the component position picked on the design canvas, expressed
+    // in the pixel space of the artwork blob that is about to be applied.
+    setDesignHole(hole) {
+      const valid =
+        hole &&
+        Number.isFinite(Number(hole.x)) &&
+        Number.isFinite(Number(hole.y));
+      this.engine.designHole = valid
+        ? {
+            x: Number(hole.x),
+            y: Number(hole.y),
+            shape: hole.shape === "square" ? "square" : "ring",
+          }
+        : null;
+      this.holeFromDesign = valid;
+    },
+    // Receives the merged component area captured on the design canvas. It
+    // only extends the product silhouette (the shape mask), so the acrylic
+    // material stays translucent over the added ear and the punched hole
+    // remains see-through. The printable artwork layer is never altered.
+    setDesignShapeRegion(blob) {
+      const engine = this.engine;
+      if (engine.designShapeRegionUrl) {
+        URL.revokeObjectURL(engine.designShapeRegionUrl);
+      }
+      engine.designShapeRegionUrl =
+        blob instanceof Blob ? URL.createObjectURL(blob) : null;
+      engine.shapeKey = "";
+    },
+    applyDesignHole(art) {
+      const hole = this.engine.designHole;
+      if (!hole || !art || !art.box) return;
+      const offsets = holeOffsetsFromPoint(art.box, hole);
+      this.o.holeX = offsets.holeX;
+      this.o.holeY = offsets.holeY;
+      this.o.holeShape = hole.shape === "square" ? "square" : "ring";
+    },
     setOptions(options) {
       const ranges = {
         border: [3, 25],
@@ -347,6 +416,7 @@ export default {
         cutLine: [0, 100],
         dpi: [1, 1200],
         stickerSize: [1, 300],
+        specSize: [1, 300],
         interfaceGuideWidth: [1, 1200],
         interfaceGuideHeight: [1, 500],
         interfaceTabWidth: [1, 1200],
@@ -389,7 +459,10 @@ export default {
           !/^#[0-9a-f]{6}$/i.test(value)
         )
           return;
-        if (key === "hook" || key === "interfaceTabEnabled") value = Boolean(value);
+        if (key === "hook" || key === "interfaceTabEnabled")
+          value = Boolean(value);
+        if (key === "holeShape" && !["ring", "square"].includes(value))
+          return;
         this.o[key] = value;
       });
     },
@@ -429,6 +502,11 @@ export default {
         engine.art = candidate;
         engine.artVersion++;
         engine.shapeKey = "";
+        // A directly uploaded PNG has no design-canvas component; fall back
+        // to the manual hole settings.
+        engine.designHole = null;
+        this.holeFromDesign = false;
+        this.setDesignShapeRegion(null);
         this.filename = file.name;
         this.dimensions = img.width + " × " + img.height;
         this.o.holeX = 0;
@@ -733,6 +811,23 @@ export default {
         if (this.$refs.configInput) this.$refs.configInput.value = "";
       }
     },
+    // Renders the current preview at high resolution and shows it in a
+    // lightbox overlay, so the small live panel can be inspected closely.
+    async openLargeView() {
+      if (!this.ready || this.busy) return;
+      try {
+        const blob = await this.exportImage({ size: 1500, format: "png" });
+        if (this.engine.destroyed) return;
+        this.closeLargeView();
+        this.largeViewUrl = URL.createObjectURL(blob);
+      } catch (e) {
+        this.reportError(e);
+      }
+    },
+    closeLargeView() {
+      if (this.largeViewUrl) URL.revokeObjectURL(this.largeViewUrl);
+      this.largeViewUrl = null;
+    },
     // Public Promise<Blob> API; does not initiate a download.
     exportImage(options = {}) {
       if (!this.ready || this.busy)
@@ -824,7 +919,7 @@ export default {
 };
 </script>
 <template>
-  <div class="acrylic-editor">
+  <div :class="['acrylic-editor', { 'lightbox-open': largeViewUrl }]">
     <header v-if="showHeader">
       <div class="brand">
         <span class="logo">透</span
@@ -864,13 +959,14 @@ export default {
             <span class="file-name">{{ filename }}</span
             ><span>{{ dimensions }}</span>
           </div>
-          <button
+          <!-- <button
             v-if="isPreview"
             class="json-import"
             @click="$refs.configInput.click()"
           >
             导入 JSON 方案</button
-          ><input
+          > -->
+          <input
             v-if="isPreview"
             ref="configInput"
             class="hidden"
@@ -879,9 +975,23 @@ export default {
             @change="importConfig($event.target.files[0])"
           />
         </section>
+        <section v-if="!isSettings">
+          <h2><span>02</span> 规格</h2>
+          <div class="spec-options">
+            <button
+              v-for="size in specSizes"
+              :key="size"
+              :class="['spec-option', { active: o.specSize === size }]"
+              :aria-pressed="o.specSize === size"
+              @click="o.specSize = size"
+            >
+              {{ size }}cm
+            </button>
+          </div>
+        </section>
         <section>
           <h2 v-if="!isSettings">
-            <span>{{ isSettings ? "01" : "02" }}</span> 板材材质
+            <span>{{ isSettings ? "01" : "03" }}</span> 板材材质
           </h2>
           <div class="materials" v-if="!isSettings">
             <button
@@ -971,7 +1081,7 @@ export default {
           >
         </section>
         <section v-if="isPreview">
-          <h2><span>03</span> 挂扣选择</h2>
+          <h2><span>04</span> 挂扣选择</h2>
           <div class="hook-options">
             <template v-for="option in hookOptions"
               ><label
@@ -1028,21 +1138,26 @@ export default {
                 max="12"
                 v-model.number="o.smooth" /></label
             ><template v-if="o.hook"
-              ><label class="range-label"
-                >挂孔水平位置 <output>{{ o.holeX }}</output
-                ><input
-                  type="range"
-                  min="-90"
-                  max="90"
-                  v-model.number="o.holeX" /></label
-              ><label class="range-label"
-                >挂孔垂直位置 <output>{{ o.holeY }}</output
-                ><input
-                  type="range"
-                  min="-30"
-                  max="45"
-                  v-model.number="o.holeY"
-              /></label>
+              ><template 
+                ><label class="range-label"
+                  >挂孔水平位置 <output>{{ o.holeX }}</output
+                  ><input
+                    type="range"
+                    min="-90"
+                    max="90"
+                    v-model.number="o.holeX" /></label
+                ><label class="range-label"
+                  >挂孔垂直位置 <output>{{ o.holeY }}</output
+                  ><input
+                    type="range"
+                    min="-30"
+                    max="45"
+                    v-model.number="o.holeY"
+                /></label>
+              </template>
+              <p v-if="holeFromDesign" class="hint">
+                挂孔位置已按设计画布中组件的位置自动确定；在预览中拖动连接环可微调。
+              </p>
               <p class="hint">
                 当前挂扣：{{ hookName }}。也可在预览中拖动连接环调整孔位。
               </p></template
@@ -1076,12 +1191,10 @@ export default {
                 type="number"
                 min="1"
                 step="1"
-              />
-            </label
+              /> </label
             ><label class="toggle-label number-setting-toggle"
               >启用底部插口
-              <input type="checkbox" v-model="o.interfaceTabEnabled" />
-            </label
+              <input type="checkbox" v-model="o.interfaceTabEnabled" /> </label
             ><label class="number-setting"
               >插口范围宽(px)
               <input
@@ -1250,10 +1363,10 @@ export default {
         <slot name="design-canvas"></slot>
       </section>
       <div class="workspace">
-        <div class="workspace-top">
+        <!-- <div class="workspace-top">
           <div>
             <span class="eyebrow">LIVE PREVIEW</span>
-            <!-- <h2>你的设计，正在成形</h2> -->
+            <h2>你的设计，正在成形</h2>
           </div>
           <button
             class="preview-badge detail-toggle"
@@ -1262,7 +1375,7 @@ export default {
           >
             {{ detail ? "查看整体" : "放大材质细节" }}
           </button>
-        </div>
+        </div> -->
         <div :class="['canvas-wrap', { detail }]">
           <canvas
             ref="preview"
@@ -1277,6 +1390,14 @@ export default {
           <div v-if="!ready" class="loading">
             {{ error || "正在准备素材…" }}
           </div>
+          <button
+            v-if="ready"
+            class="view-large-action"
+            :disabled="busy"
+            @click="openLargeView"
+          >
+            查看大图
+          </button>
         </div>
         <!-- <div class="preview-footer">
           <span>✧ {{ materialLabel }}</span
@@ -1314,6 +1435,27 @@ export default {
         </p> -->
       </div>
     </main>
+    <div
+      v-if="largeViewUrl"
+      class="large-view-overlay"
+      role="dialog"
+      aria-label="效果图大图"
+      @click="closeLargeView"
+    >
+      <button
+        class="large-view-close"
+        type="button"
+        aria-label="关闭大图"
+        @click.stop="closeLargeView"
+      >
+        ×
+      </button>
+      <img
+        :src="largeViewUrl"
+        alt="亚克力挂件效果图大图"
+        @click.stop
+      />
+    </div>
     <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
   </div>
 </template>

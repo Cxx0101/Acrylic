@@ -568,7 +568,7 @@ canvas {
 
 /* Preview is a design-first workspace: parameters, editable artboard, then product mockup. */
 .editor-preview {
-    grid-template-columns: 300px minmax(620px, 1fr) 330px;
+    grid-template-columns: 300px minmax(620px, 1fr) 400px;
     max-width: 1800px;
     align-items: start
 }
@@ -588,7 +588,7 @@ canvas {
     position: sticky;
     top: 95px;
     grid-column: 3;
-    max-width: 330px;
+    max-width: 396px;
     padding: 28px 18px 24px;
     margin: 0
 }
@@ -602,24 +602,24 @@ canvas {
 }
 
 .editor-preview .canvas-wrap {
-    max-width: 294px;
+    max-width: 360px;
     border-radius: 10px
 }
 
 .editor-preview .preview-footer {
-    max-width: 294px;
+    max-width: 360px;
     margin: 10px auto 18px;
     font-size: 11px
 }
 
 .editor-preview .bottom-settings {
     grid-template-columns: 1fr;
-    max-width: 294px;
+    max-width: 360px;
     gap: 9px
 }
 
 .editor-preview .export-note {
-    max-width: 294px;
+    max-width: 360px;
     margin: 12px auto;
     font-size: 11px
 }
@@ -635,11 +635,11 @@ canvas {
 
 @media(max-width:1350px) {
     .editor-preview {
-        grid-template-columns: 285px minmax(500px, 1fr) 290px
+        grid-template-columns: 285px minmax(500px, 1fr) 390px
     }
 
     .editor-preview .workspace {
-        max-width: 290px;
+        max-width: 390px;
         padding: 24px 14px
     }
 
@@ -647,7 +647,7 @@ canvas {
     .editor-preview .preview-footer,
     .editor-preview .bottom-settings,
     .editor-preview .export-note {
-        max-width: 260px
+        max-width: 360px
     }
 
     .editor-preview .design-canvas {
@@ -903,6 +903,29 @@ top: 95px
     font-weight: 400
 }
 
+.spec-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px
+}
+
+.spec-options button {
+    border: 1px solid #d8dfdb;
+    border-radius: 9px;
+    background: #fff;
+    color: #617069;
+    font-size: 13px;
+    padding: 12px 8px;
+    text-align: center
+}
+
+.spec-options button.active {
+    border: 2px solid #3e695b;
+    background: #f1f6f3;
+    color: #2d5548;
+    font-weight: 600
+}
+
 .hook-options {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -975,4 +998,78 @@ top: 95px
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis
+}
+/* 查看大图：预览右下角入口 + 全屏灯箱 */
+/* isolation: isolate traps the fixed overlay in the component stacking
+   context, where the sticky header (z-index 10) paints above it. Lift the
+   whole component above the header while the lightbox is open so the mask
+   covers the top of the page too. */
+.acrylic-editor.lightbox-open {
+    position: relative;
+    z-index: 1001
+}
+
+.view-large-action {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
+    border: 1px solid #c9d6ce;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .92);
+    color: #47594e;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 6px 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px #293c3514
+}
+
+.view-large-action:hover {
+    background: #fff;
+    color: #244f43
+}
+
+.view-large-action:disabled {
+    opacity: .5;
+    cursor: wait
+}
+
+.large-view-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    background: rgba(22, 30, 26, .74);
+    padding: 40px;
+    cursor: zoom-out
+}
+
+.large-view-overlay img {
+    max-width: 90vmin;
+    max-height: 90vmin;
+    border-radius: 12px;
+    box-shadow: 0 24px 80px #0008;
+    cursor: default;
+    background: #f7f7f5
+}
+
+.large-view-close {
+    position: absolute;
+    top: 22px;
+    right: 26px;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .92);
+    color: #25302c;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer
+}
+
+.large-view-close:hover {
+    background: #fff
 }

@@ -5,10 +5,10 @@
         <span>D</span>
         <div>亚克力Demo<small>ACRYLIC STUDIO</small></div>
       </div>
-      <nav aria-label="主导航">
+      <!-- <nav aria-label="主导航">
         <router-link exact to="/">预览首页</router-link>
         <router-link to="/settings">效果设置</router-link>
-      </nav>
+      </nav> -->
       <button
         v-if="isSettings"
         class="header-action"
@@ -17,14 +17,14 @@
       >
         导出 JSON
       </button>
-      <button
+      <!-- <button
         v-else
         class="header-action"
         :disabled="!editorReady"
         @click="downloadImage"
       >
         下载效果图
-      </button>
+      </button> -->
     </header>
     <div class="page-heading">
       <!-- <div><span>{{isSettings?'DESIGN SETTINGS':'QUICK PREVIEW'}}</span><h1>{{isSettings?'设置效果图参数':'导入方案并预览效果'}}</h1></div>
@@ -50,6 +50,7 @@
         :cut-line="patternCutLine"
         :dpi="patternDpi"
         :component-size="patternComponentSize"
+        :spec-size="patternSpecSize"
         :interface-tab-enabled="patternInterfaceTabEnabled"
         :interface-guide-width="patternInterfaceGuideWidth"
         :interface-guide-height="patternInterfaceGuideHeight"
@@ -97,6 +98,10 @@ export default {
       );
       return Number.isFinite(value) ? value : 50;
     },
+    patternSpecSize() {
+      const value = Number(this.editorOptions && this.editorOptions.specSize);
+      return Number.isFinite(value) ? value : 10;
+    },
     patternInterfaceTabEnabled() {
       return Boolean(this.editorOptions && this.editorOptions.interfaceTabEnabled);
     },
@@ -135,8 +140,16 @@ export default {
       if (this.$refs.designWorkspace)
         this.$refs.designWorkspace.setPatternFile(file);
     },
-    applyDesign({ blob }) {
+    applyDesign({ blob, hole, shapeRegion }) {
       if (!blob) return;
+      // The hole position must be registered before the artwork swap, so the
+      // editor derives it from the component position during the next load.
+      if (this.$refs.editor && this.$refs.editor.setDesignHole)
+        this.$refs.editor.setDesignHole(hole);
+      // The merged component area only extends the preview silhouette; the
+      // artwork itself stays unprinted over the added ear.
+      if (this.$refs.editor && this.$refs.editor.setDesignShapeRegion)
+        this.$refs.editor.setDesignShapeRegion(shapeRegion || null);
       if (this.artworkObjectUrl) URL.revokeObjectURL(this.artworkObjectUrl);
       this.artworkObjectUrl = URL.createObjectURL(blob);
       this.artwork = this.artworkObjectUrl;

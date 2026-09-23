@@ -18,7 +18,7 @@
         </div>
 
         <div class="form-grid">
-          <label>
+          <label v-if="!embedded">
             尺寸(cm)
             <input
               v-model.number="maximumSizeCm"
@@ -230,7 +230,7 @@
       <div class="canvas-panel-title">
         <span>设计画布</span>
         <div class="canvas-panel-hint">
-          <button
+          <!-- <button
             class="secondary-action"
             :disabled="
               processing ||
@@ -241,16 +241,16 @@
             @click="saveCanvasScreenshot"
           >
             {{ savingCanvasScreenshot ? "正在保存…" : "保存画布截图" }}
-          </button>
+          </button> -->
           <button
             v-if="embedded"
             class="apply-design-action"
             :disabled="!canApply"
             @click="$emit('apply-design')"
           >
-            使用此图案
+            生成效果图
           </button>
-          <button
+          <!-- <button
             class="primary-action"
             :disabled="
               processing || !fabricCanvas || !fabricCanvas.backgroundImage
@@ -258,7 +258,7 @@
             @click="openReplaceImagePicker"
           >
             替换图片
-          </button>
+          </button> -->
           <input
             ref="replacementInput"
             class="file-upload-input"
@@ -308,15 +308,14 @@ function buildStickerSvg(pattern, cutLine, renderedSize) {
       <circle cx="32" cy="28" r="11" fill="none" stroke="#1296DB" stroke-width="4" />
     </svg>`;
   }
-  const viewBoxSize = 934.4;
-  const strokeWidth = Math.min(
-    viewBoxSize,
-    (visibleStroke / size) * viewBoxSize,
-  );
-  const radius = Math.max(0, 467.2 - strokeWidth / 2);
-  return `<svg width="48" height="48" viewBox="44.8 44.8 934.4 934.4" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="512" cy="512" r="${radius}" fill="none" stroke="#1296DB" stroke-width="${strokeWidth}" />
-    <path d="M512 236.8c-150.4 0-272 124.8-272 278.4 0 153.6 121.6 278.4 272 278.4s272-124.8 272-278.4c0-153.6-121.6-278.4-272-278.4z m0 496c-115.2 0-208-96-208-214.4s92.8-214.4 208-214.4 208 96 208 214.4-92.8 214.4-208 214.4z" fill="#1296DB" />
+  // Keep one outer loop and one inner hole. The previous SVG combined a
+  // separate outer circle with a second, overlapping compound ring, which
+  // made the contour tracer treat the component as multiple loops.
+  const strokeWidth = Math.max(3, Math.min(12, (visibleStroke / size) * 64));
+  const radius = 32 - strokeWidth / 2;
+  return `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="${radius}" fill="none" stroke="#1296DB" stroke-width="${strokeWidth}" />
+    <circle cx="32" cy="32" r="11" fill="none" stroke="#1296DB" stroke-width="4" />
   </svg>`;
 }
 
@@ -354,6 +353,8 @@ export default {
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
     componentSize: { type: Number, default: 50 },
+    // 成品最长边的物理规格（cm），与左侧栏“规格”选择联动。
+    specSize: { type: Number, default: 10 },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidthSetting: { type: Number, default: 300 },
     interfaceGuideHeightSetting: { type: Number, default: 52 },
@@ -449,6 +450,14 @@ export default {
       this.stickerSize = Number.isFinite(next) ? Math.max(1, Math.round(next)) : 50;
       if (this.edgeSticker && !this.processing) this.applyStickerSize();
     },
+    specSize(value) {
+      const next = Number(value);
+      if (!Number.isFinite(next) || next <= 0) return;
+      if (next === this.maximumSizeCm) return;
+      this.maximumSizeCm = next;
+      // 画布尚未就绪时只更新数值，下次 generate 会按新规格布局。
+      if (this.fabricCanvas && !this.processing) this.applyPhysicalSize();
+    },
     interfaceTabEnabled(value) {
       this.enableInterfaceTab = Boolean(value);
       if (this.fabricCanvas && !this.processing) this.toggleInterfaceTab();
@@ -520,6 +529,7 @@ export default {
       this.outerPathBlob = asset.outerPathBlob || asset.pathBlob || null;
       this.replacementFrame = asset.replacementFrame || null;
       this.preMergeState = asset.preMergeState || null;
+      this.designHole = asset.designHole || null;
       this.finish = Boolean(asset.finish);
     },
 
@@ -1863,6 +1873,7 @@ export default {
       this.stage = "";
       this.resultBlob = null;
       this.artworkBlob = null;
+      this.designHole = null;
       this.artworkMaskBlob = null;
       this.contentBlob = null;
       this.pathBlob = null;
@@ -2016,6 +2027,44 @@ export default {
           this.edgeSticker.getScaledHeight() / (background.scaleY || 1),
         angle: this.edgeSticker.angle || 0,
       };
+    },
+
+    // Component center in the pixel space shared by artworkBlob/contentBlob/
+    // pathBlob; the effect editor uses it to place the hanging hole exactly
+    // where the component sits on the design canvas. After the component is
+    // merged (and removed from the canvas) the captured position is used.
+    getDesignHole() {
+      if (this.edgeSticker) {
+        const position = this.getStickerSourcePosition();
+        if (position) {
+          return {
+            x: position.x,
+            y: position.y,
+            shape: this.edgeSticker.stickerPattern || this.stickerPattern,
+          };
+        }
+      }
+      return this.designHole || null;
+    },
+
+    // Product silhouette for the effect editor: the enclosed interior of the
+    // current die line plus the line band itself, painted opaque white. The
+    // preview contour then matches the design canvas exactly instead of
+    // being re-derived from the artwork alpha with a simulated border.
+    async getDesignShapeRegion() {
+      if (!this.pathBlob) return null;
+      const interior = await this.getCutLineInteriorMask(this.pathBlob);
+      const pathImage = await this.loadFabricImage(this.pathBlob);
+      const path = pathImage.getElement
+        ? pathImage.getElement()
+        : pathImage._element;
+      const context = interior.getContext("2d");
+      context.globalCompositeOperation = "source-over";
+      context.drawImage(path, 0, 0);
+      context.globalCompositeOperation = "source-in";
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, interior.width, interior.height);
+      return this.canvasToPngBlob(interior);
     },
 
     getStickerFramePadding(position, sourceWidth, sourceHeight) {
@@ -2987,6 +3036,19 @@ export default {
         : pathImage._element;
       const pathWidth = path.naturalWidth || path.width;
       const pathHeight = path.naturalHeight || path.height;
+      const pathCanvas = document.createElement("canvas");
+      pathCanvas.width = pathWidth;
+      pathCanvas.height = pathHeight;
+      const pathContext = pathCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
+      pathContext.drawImage(path, 0, 0, pathWidth, pathHeight);
+      const pathPixels = pathContext.getImageData(
+        0,
+        0,
+        pathWidth,
+        pathHeight,
+      ).data;
       const primaryMask = this.createStickerPrimaryMask(width, height);
       if (!primaryMask) return null;
       const maskContext = primaryMask.getContext("2d", {
@@ -3831,6 +3893,7 @@ export default {
       this.stage = "准备";
       this.resultBlob = null;
       this.artworkBlob = null;
+      this.designHole = null;
       this.artworkMaskBlob = null;
       this.contentBlob = null;
       this.pathBlob = null;
@@ -4082,6 +4145,7 @@ export default {
         pathBlob: this.pathBlob,
         outerPathBlob: this.outerPathBlob,
         replacementFrame: this.replacementFrame,
+        designHole: this.designHole,
         sticker: this.edgeSticker
           ? {
               x:
@@ -4138,6 +4202,13 @@ export default {
           });
           this.contentBlob = paddedContentBlob;
           this.artworkBlob = paddedArtworkBlob;
+          // The sticker is removed after the merge; remember where the hole
+          // belongs in the padded layer so the effect editor can place it.
+          this.designHole = {
+            x: stickerPosition.x + componentPadding.left,
+            y: stickerPosition.y + componentPadding.top,
+            shape: this.edgeSticker.stickerPattern || this.stickerPattern,
+          };
           if (this.replacementFrame) {
             this.replacementFrame = {
               ...this.replacementFrame,
@@ -4308,6 +4379,7 @@ export default {
         this.pathBlob = previous.pathBlob;
         this.outerPathBlob = previous.outerPathBlob || previous.pathBlob;
         this.replacementFrame = previous.replacementFrame || null;
+        this.designHole = previous.designHole || null;
         await this.insertImage(previous.resultBlob);
         if (this.edgeSticker) {
           const background = this.fabricCanvas.backgroundImage;

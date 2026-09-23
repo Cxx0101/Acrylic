@@ -15,6 +15,7 @@
       :cut-line="cutLine"
       :dpi="dpi"
       :component-size="componentSize"
+      :spec-size="specSize"
       :interface-tab-enabled="interfaceTabEnabled"
       :interface-guide-width-setting="interfaceGuideWidth"
       :interface-guide-height-setting="interfaceGuideHeight"
@@ -37,6 +38,7 @@ export default {
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
     componentSize: { type: Number, default: 50 },
+    specSize: { type: Number, default: 10 },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidth: { type: Number, default: 300 },
     interfaceGuideHeight: { type: Number, default: 52 },
@@ -59,11 +61,20 @@ export default {
       if (!file || !this.$refs.designer) return;
       this.$refs.designer.handleFileChange({ target: { files: [file] } });
     },
-    applyDesign() {
+    async applyDesign() {
       const designer = this.$refs.designer;
       if (!designer || designer.processing || !designer.artworkBlob) return;
+      // The preview receives the pristine artwork plus the die-line interior
+      // separately: the region IS the authored product contour, so the
+      // preview outline matches the design canvas exactly, the acrylic
+      // material stays translucent and the hole is see-through.
+      const shapeRegion = designer.getDesignShapeRegion
+        ? await designer.getDesignShapeRegion()
+        : null;
       this.$emit("apply-design", {
         blob: designer.artworkBlob,
+        hole: designer.getDesignHole ? designer.getDesignHole() : null,
+        shapeRegion,
         filename: (designer.file && designer.file.name) || "designed-pattern.png",
       });
     },
