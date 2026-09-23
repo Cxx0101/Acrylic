@@ -1499,6 +1499,9 @@ export default {
             @pointerup="stopDrag"
             @pointercancel="stopDrag"
           ></canvas>
+          <!-- Settings-page board layout layer (BoardLayoutEditor) overlays
+               the mockup canvas; the design canvas keeps its own slot below. -->
+          <slot name="layout-layer"></slot>
           <div v-if="!ready" class="loading">
             {{ error || "正在准备素材…" }}
           </div>

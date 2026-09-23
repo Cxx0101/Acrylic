@@ -13,10 +13,29 @@
         v-if="isSettings"
         class="header-action"
         :disabled="!editorReady"
-        @click="exportConfig"
+        @click="exportPlan"
       >
-        导出 JSON
+        导出方案 JSON
       </button>
+      <template v-else>
+        <button class="header-action" @click="$refs.planInput.click()">
+          导入方案
+        </button>
+        <button
+          v-if="planBoards.length"
+          class="header-action header-action--ghost"
+          @click="clearPlan"
+        >
+          清除方案
+        </button>
+      </template>
+      <input
+        ref="planInput"
+        type="file"
+        accept="application/json,.json"
+        style="display: none"
+        @change="importPlan($event.target.files[0])"
+      />
       <!-- <button
         v-else
         class="header-action"
@@ -46,7 +65,7 @@
         ref="designWorkspace"
         slot="design-canvas"
         embedded
-        :mode="isSettings ? 'settings' : 'preview'"
+        :plan-boards="planBoards.length ? planBoards : null"
         :white-border="patternWhiteBorder"
         :cut-line="patternCutLine"
         :dpi="patternDpi"
@@ -58,16 +77,24 @@
         :interface-tab-width="patternInterfaceTabWidth"
         :interface-tab-height="patternInterfaceTabHeight"
         @apply-design="applyDesign"
-    /></AcrylicEditor>
+      /><template slot="layout-layer">
+        <BoardLayoutEditor
+          v-if="isSettings"
+          :boards="layoutBoards"
+          :scene="editorOptions || {}"
+          @change="onBoardsChange"
+        />
+      </template></AcrylicEditor>
   </div>
 </template>
 <script>
 import AcrylicEditor from "./components/AcrylicEditor";
 import DesignWorkspace from "./components/DesignWorkspace.vue";
+import BoardLayoutEditor from "./components/BoardLayoutEditor.vue";
 import artwork from "./components/AcrylicEditor/assets/artwork.png";
 export default {
   name: "App",
-  components: { AcrylicEditor, DesignWorkspace },
+  components: { AcrylicEditor, DesignWorkspace, BoardLayoutEditor },
   data() {
     return {
       artwork,
@@ -76,11 +103,29 @@ export default {
       editorReady: false,
       artworkObjectUrl: "",
       boardUrls: [],
+      // 设置页布局编辑器产出 / 首页导入的板块布局（JSON boards）。
+      planBoards: [],
+      // 未导入方案时，布局编辑器的默认单块占位。
+      layoutDefault: [
+        {
+          id: "b1",
+          name: "板块1",
+          x: 250,
+          y: 255,
+          scale: 1,
+          rotation: 0,
+          z: 0,
+          specSize: 10,
+        },
+      ],
     };
   },
   computed: {
     isSettings() {
       return this.$route.path === "/settings";
+    },
+    layoutBoards() {
+      return this.planBoards.length ? this.planBoards : this.layoutDefault;
     },
     patternWhiteBorder() {
       const border = Number(this.editorOptions && this.editorOptions.border);
@@ -128,6 +173,7 @@ export default {
     onReady() {
       this.editorReady = true;
       console.log("亚克力编辑器已就绪");
+      this.restorePlan();
     },
     onChange(options) {
       this.editorOptions = options;
@@ -147,6 +193,12 @@ export default {
       // Each plate gets its own object URL; the editor composites them by the
       // per-plate assembly transform (offset / rotation / z).
       this.revokeBoardUrls();
+      // JSON 里的 x/y 是板块中心在 500 画布上的绝对坐标；合成引擎的
+      // transform 是相对场景摆放（productX/Y）的偏移，这里做一次换算。
+      const sceneX =
+        Number(this.editorOptions && this.editorOptions.productX) || 0;
+      const sceneY =
+        Number(this.editorOptions && this.editorOptions.productY) || 0;
       const list = boards.map((board) => {
         const url = URL.createObjectURL(board.blob);
         this.boardUrls.push(url);
@@ -155,7 +207,13 @@ export default {
           src: url,
           hole: board.hole || null,
           shapeRegion: board.shapeRegion || null,
-          transform: board.transform || null,
+          transform: {
+            offsetX: Math.round((Number(board.x) || 250) - 250 - sceneX),
+            offsetY: Math.round((Number(board.y) || 255) - 250 - sceneY),
+            scale: Number(board.scale) || 1,
+            rotation: Number(board.rotation) || 0,
+            z: Number(board.z) || 0,
+          },
         };
       });
       if (this.$refs.editor && this.$refs.editor.setBoards) {
@@ -177,6 +235,81 @@ export default {
     revokeBoardUrls() {
       this.boardUrls.forEach((url) => URL.revokeObjectURL(url));
       this.boardUrls = [];
+    },
+    // 设置页：导出「板块布局 + 效果参数」方案（version 5 = v4 配置 + boards）。
+    exportPlan() {
+      const editor = this.$refs.editor;
+      if (!editor || !editor.createConfig) return;
+      const config = editor.createConfig();
+      config.version = 5;
+      config.boards = JSON.parse(
+        JSON.stringify(this.planBoards.length ? this.planBoards : this.layoutDefault),
+      );
+      const blob = new Blob([JSON.stringify(config, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "acrylic-plan.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    // 首页：导入方案 → 应用效果参数 + 板块布局，并写入本地缓存。
+    importPlan(file) {
+      if (!file) return;
+      file
+        .text()
+        .then((text) => {
+          const config = JSON.parse(text);
+          if (!Array.isArray(config.boards) || !config.boards.length) {
+            throw Error("JSON 中没有板块布局（boards）。");
+          }
+          this.planBoards = config.boards;
+          localStorage.setItem("acrylic-board-plan", JSON.stringify(config));
+          if (this.$refs.editor && this.$refs.editor.loadConfig) {
+            return this.$refs.editor.loadConfig({
+              version: 4,
+              options: config.options,
+              assets: config.assets,
+            });
+          }
+        })
+        .catch((e) => console.error("导入方案失败", e));
+    },
+    // 页面加载时恢复上次导入的方案（切页/刷新不丢）。
+    restorePlan() {
+      try {
+        const raw = localStorage.getItem("acrylic-board-plan");
+        if (!raw) return;
+        const config = JSON.parse(raw);
+        if (Array.isArray(config.boards) && config.boards.length) {
+          this.planBoards = config.boards;
+        }
+        if (
+          config.options &&
+          this.$refs.editor &&
+          this.$refs.editor.loadConfig
+        ) {
+          this.$refs.editor.loadConfig({
+            version: 4,
+            options: config.options,
+            assets: config.assets,
+          });
+        }
+      } catch (e) {
+        console.error("方案缓存恢复失败", e);
+      }
+    },
+    clearPlan() {
+      this.planBoards = [];
+      localStorage.removeItem("acrylic-board-plan");
+    },
+    // 设置页布局编辑器的每次改动都同步进 planBoards。
+    onBoardsChange(boards) {
+      this.planBoards = boards;
     },
     downloadImage() {
       this.$refs.editor.download();
@@ -278,6 +411,11 @@ button {
 .header-action:disabled {
   opacity: 0.45;
   cursor: wait;
+}
+.header-action--ghost {
+  background: #fff;
+  color: #285348;
+  border: 1px solid #cfd9d5;
 }
 .page-heading {
   max-width: 1370px;
