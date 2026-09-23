@@ -272,7 +272,7 @@
         class="canvas-stage"
         :class="{ 'is-finalizing-component': isFinalizingComponent }"
       >
-        <canvas id="canvas-editor" class="canvas-editor"></canvas>
+        <canvas ref="canvasEditor" class="canvas-editor"></canvas>
         <div v-if="isFinalizingComponent" class="canvas-processing-mask">
           正在生成最终效果…
         </div>
@@ -4527,7 +4527,9 @@ export default {
   },
 
   async mounted() {
-    this.fabricCanvas = new fabric.Canvas("canvas-editor", {
+    // 按实例引用初始化：绝不能用全局 id，多板块多实例时 fabric 会把所有
+    // 实例都绑到文档中第一个同名 id 的画布上（板 2 画进板 1 的 bug 根因）。
+    this.fabricCanvas = new fabric.Canvas(this.$refs.canvasEditor, {
       fireRightClick: true,
       stopContextMenu: true,
       controlsAboveOverlay: true,
