@@ -307,16 +307,16 @@ export default {
           engine.boardConfigs && engine.boardConfigs.length
             ? engine.boardConfigs
             : this.src
-              ? [
-                  {
-                    id: "b0",
-                    src: this.src,
-                    hole: engine.designHole,
-                    shapeRegionUrl: engine.designShapeRegionUrl,
-                    transform: null,
-                  },
-                ]
-              : [];
+            ? [
+                {
+                  id: "b0",
+                  src: this.src,
+                  hole: engine.designHole,
+                  shapeRegionUrl: engine.designShapeRegionUrl,
+                  transform: null,
+                },
+              ]
+            : [];
         const boards = [];
         for (const cfg of configs) {
           const source = cfg.src || this.src;
@@ -554,8 +554,7 @@ export default {
           return;
         if (key === "hook" || key === "interfaceTabEnabled")
           value = Boolean(value);
-        if (key === "holeShape" && !["ring", "square"].includes(value))
-          return;
+        if (key === "holeShape" && !["ring", "square"].includes(value)) return;
         this.o[key] = value;
       });
     },
@@ -1015,9 +1014,7 @@ export default {
       const shapes = this.engine.boards.map((b) => b.shape).filter(Boolean);
       if (!shapes.length) return;
       const p = this.position(e);
-      const hit = shapes.some(
-        (s) => Math.hypot(p.x - s.hx, p.y - s.hy) < 35,
-      );
+      const hit = shapes.some((s) => Math.hypot(p.x - s.hx, p.y - s.hy) < 35);
       if (hit) {
         this.dragging = true;
         e.target.setPointerCapture(e.pointerId);
@@ -1122,8 +1119,8 @@ export default {
               ><b v-if="o.material === m[0]">✓</b>
             </button>
           </div>
-          <template v-if="!isPreview"
-            ><details class="advanced" open>
+          <template v-if="!isPreview">
+            <details class="advanced" open>
               <summary>自定义材质参数</summary>
               <label v-if="o.material === 'tinted'" class="color-label"
                 >板材颜色 <input type="color" v-model="o.tint" /></label
@@ -1194,8 +1191,8 @@ export default {
                   ×
                 </button></span
               >
-            </div></template
-          >
+            </div>
+          </template>
         </section>
         <section v-if="isPreview">
           <h2><span>04</span> 挂扣选择</h2>
@@ -1237,8 +1234,8 @@ export default {
             PNG，并会随 JSON 一起保存。
           </p> -->
         </section>
-        <template v-if="!isPreview"
-          ><section>
+        <template v-if="!isPreview">
+          <section>
             <h2><span>02</span> 轮廓与挂孔</h2>
             <label class="range-label"
               >透明留边 <output>{{ o.border }} px</output
@@ -1249,13 +1246,10 @@ export default {
                 v-model.number="o.border" /></label
             ><label class="range-label"
               >轮廓圆滑 <output>{{ o.smooth }}</output
-              ><input
-                type="range"
-                min="0"
-                max="12"
-                v-model.number="o.smooth" /></label
-            ><template v-if="o.hook"
-              ><template 
+              ><input type="range" min="0" max="12" v-model.number="o.smooth"
+            /></label>
+            <!-- <template v-if="o.hook">
+              <template
                 ><label class="range-label"
                   >挂孔水平位置 <output>{{ o.holeX }}</output
                   ><input
@@ -1277,11 +1271,11 @@ export default {
               </p>
               <p class="hint">
                 当前挂扣：{{ hookName }}。也可在预览中拖动连接环调整孔位。
-              </p></template
-            >
+              </p>
+            </template>
             <p v-else class="hint">
               首页当前选择了“无挂扣”；需要挂孔时请返回首页选择挂扣。
-            </p>
+            </p> -->
           </section>
           <section>
             <h2><span>03</span> 图案工艺</h2>
@@ -1352,49 +1346,6 @@ export default {
           </section>
           <section>
             <h2><span>04</span> 场景与位置</h2>
-            <label class="select-label"
-              >场景模板<select
-                :value="scenePreset"
-                @change="applyScene($event.target.value)"
-              >
-                <option v-for="(scene, key) in scenes" :key="key" :value="key">
-                  {{ scene.label }}
-                </option>
-                <option value="custom" disabled>自定义</option>
-              </select></label
-            ><label class="range-label"
-              >水平位置 <output>{{ o.productX }}</output
-              ><input
-                type="range"
-                min="-150"
-                max="150"
-                v-model.number="o.productX"
-                @input="scenePreset = 'custom'" /></label
-            ><label class="range-label"
-              >垂直位置 <output>{{ o.productY }}</output
-              ><input
-                type="range"
-                min="-150"
-                max="150"
-                v-model.number="o.productY"
-                @input="scenePreset = 'custom'" /></label
-            ><label class="range-label"
-              >产品缩放 <output>{{ o.productScale }}%</output
-              ><input
-                type="range"
-                min="50"
-                max="180"
-                v-model.number="o.productScale"
-                @input="scenePreset = 'custom'" /></label
-            ><label class="range-label"
-              >产品旋转 <output>{{ o.productRotation }}°</output
-              ><input
-                type="range"
-                min="-30"
-                max="30"
-                v-model.number="o.productRotation"
-                @input="scenePreset = 'custom'"
-            /></label>
             <details class="advanced">
               <summary>阴影参数</summary>
               <label class="range-label"
@@ -1473,8 +1424,9 @@ export default {
                 accept="application/json,.json"
                 @change="importConfig($event.target.files[0])"
               />
-            </div></section
-        ></template>
+            </div>
+          </section>
+        </template>
       </aside>
       <section v-if="isPreview" class="design-canvas">
         <slot name="design-canvas"></slot>
@@ -1570,11 +1522,7 @@ export default {
       >
         ×
       </button>
-      <img
-        :src="largeViewUrl"
-        alt="亚克力挂件效果图大图"
-        @click.stop
-      />
+      <img :src="largeViewUrl" alt="亚克力挂件效果图大图" @click.stop />
     </div>
     <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
   </div>
