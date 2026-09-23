@@ -192,6 +192,11 @@ export default {
       // True while the current artwork carries a design-canvas-derived hole
       // position; the settings sliders are then replaced by a hint.
       holeFromDesign: false,
+      // Per-plate parameter editing (settings page): the currently selected
+      // board and its responsive parameter override object.
+      boardEditingId: null,
+      boardEditingName: "",
+      boardEditingO: {},
     };
   },
   computed: {
@@ -212,6 +217,12 @@ export default {
       handler() {
         this.scheduleRedraw();
         this.$emit("change", Object.assign({}, this.o));
+      },
+    },
+    boardEditingO: {
+      deep: true,
+      handler() {
+        this.applyBoardEditingO();
       },
     },
     src() {
@@ -342,6 +353,7 @@ export default {
             hole: cfg.hole || null,
             shapeRegionUrl: cfg.shapeRegionUrl || null,
             transform: cfg.transform || null,
+            o: cfg.o || null,
             art,
             artVersion: (engine.artVersion = engine.artVersion + 1),
             shapeKey: "",
@@ -427,13 +439,62 @@ export default {
     // returns the shared options object untouched, so nothing shifts.
     blockOptions(board, base) {
       const shared = base || this.o;
-      if (!board || !board.hole || !board.art || !board.art.box) return shared;
+      if (!board) return shared;
+      // Per-plate overrides (material/contour/hook) beat the shared options.
+      const merged = board.o ? Object.assign({}, shared, board.o) : shared;
+      if (!board.hole || !board.art || !board.art.box) return merged;
       const offsets = holeOffsetsFromPoint(board.art.box, board.hole);
-      return Object.assign({}, shared, {
+      return Object.assign({}, merged, {
         holeX: offsets.holeX,
         holeY: offsets.holeY,
         holeShape: board.hole.shape === "square" ? "square" : "ring",
       });
+    },
+    // Settings page: edit the selected plate's own parameter overrides.
+    pickBoardODefaults() {
+      const keys = [
+        "tint",
+        "baseColor",
+        "baseOpacity",
+        "density",
+        "textureScale",
+        "textureOpacity",
+        "intensity",
+        "thickness",
+        "shine",
+        "border",
+        "smooth",
+        "hook",
+      ];
+      const out = {};
+      keys.forEach((k) => {
+        out[k] = this.o[k];
+      });
+      return out;
+    },
+    setEditingBoard(id, o, name) {
+      this.boardEditingId = id || null;
+      this.boardEditingName = name || "";
+      this.boardEditingO = id
+        ? Object.assign({}, o || this.pickBoardODefaults())
+        : {};
+    },
+    applyBoardEditingO() {
+      const engine = this.engine;
+      if (this.boardEditingId) {
+        const board = (engine.boards || []).find(
+          (b) => b.id === this.boardEditingId,
+        );
+        if (board) {
+          board.o = Object.assign({}, this.boardEditingO);
+          board.shapeKey = "";
+        }
+      }
+      this.$emit("board-o-change", {
+        id: this.boardEditingId,
+        o: Object.assign({}, this.boardEditingO),
+      });
+      this.scheduleRedraw();
     },
     // Public API: replace the scene's plates. Each item is
     // { id?, src, hole?, shapeRegion?, transform? }; shapeRegion is a Blob.
@@ -461,6 +522,7 @@ export default {
           hole: item.hole || null,
           shapeRegionUrl,
           transform: item.transform || null,
+          o: item.o || null,
         };
       });
       this.initialize();
@@ -654,7 +716,8 @@ export default {
       ];
       const item = { name, options: {} };
       keys.forEach((k) => {
-        item.options[k] = this.o[k];
+        item.options[k] =
+          k === "material" ? this.o[k] : this.boardEditingO[k];
       });
       const index = this.customPresets.findIndex((p) => p.name === name);
       if (index >= 0) this.customPresets.splice(index, 1, item);
@@ -668,7 +731,16 @@ export default {
       this.$emit("preset-save", item);
     },
     applyMaterialPreset(item) {
-      if (item && item.options) this.setOptions(item.options);
+      if (!item || !item.options) return;
+      // Material type stays global; the rest land on the selected plate.
+      const rest = Object.assign({}, item.options);
+      if (rest.material) {
+        this.setOptions({ material: rest.material });
+        delete rest.material;
+      }
+      Object.keys(rest).forEach((k) => {
+        if (rest[k] !== undefined) this.$set(this.boardEditingO, k, rest[k]);
+      });
     },
     removeMaterialPreset(index) {
       this.customPresets.splice(index, 1);
@@ -1121,59 +1193,67 @@ export default {
           </div>
           <template v-if="!isPreview">
             <details class="advanced" open>
-              <summary>自定义材质参数</summary>
+              <summary
+                >自定义材质参数{{
+                  boardEditingName ? " · " + boardEditingName : ""
+                }}</summary
+              >
               <label v-if="o.material === 'tinted'" class="color-label"
-                >板材颜色 <input type="color" v-model="o.tint" /></label
+                >板材颜色 <input type="color" v-model="boardEditingO.tint" /></label
               ><label class="color-label"
                 >叠加底色
                 <span
-                  ><input type="color" v-model="o.baseColor" />
-                  {{ o.baseOpacity }}%</span
+                  ><input type="color" v-model="boardEditingO.baseColor" />
+                  {{ boardEditingO.baseOpacity }}%</span
                 ></label
               ><input
                 type="range"
                 min="0"
                 max="100"
-                v-model.number="o.baseOpacity"
+                v-model.number="boardEditingO.baseOpacity"
               /><label v-if="o.material === 'glitter'" class="range-label"
-                >亮片密度 <output>{{ o.density }}%</output
+                >亮片密度 <output>{{ boardEditingO.density }}%</output
                 ><input
                   type="range"
                   min="10"
                   max="100"
-                  v-model.number="o.density" /></label
+                  v-model.number="boardEditingO.density" /></label
               ><label v-if="o.material === 'glitter'" class="range-label"
-                >纹理大小 <output>{{ o.textureScale }}%</output
+                >纹理大小 <output>{{ boardEditingO.textureScale }}%</output
                 ><input
                   type="range"
                   min="20"
                   max="300"
-                  v-model.number="o.textureScale" /></label
+                  v-model.number="boardEditingO.textureScale" /></label
               ><label v-if="o.material === 'glitter'" class="range-label"
-                >纹理透明度 <output>{{ o.textureOpacity }}%</output
+                >纹理透明度 <output>{{ boardEditingO.textureOpacity }}%</output
                 ><input
                   type="range"
                   min="0"
                   max="100"
-                  v-model.number="o.textureOpacity" /></label
+                  v-model.number="boardEditingO.textureOpacity" /></label
               ><label class="range-label"
-                >材质强度 <output>{{ o.intensity }}%</output
+                >材质强度 <output>{{ boardEditingO.intensity }}%</output
                 ><input
                   type="range"
                   min="0"
                   max="100"
-                  v-model.number="o.intensity" /></label
+                  v-model.number="boardEditingO.intensity" /></label
               ><label class="range-label"
-                >板材厚度 <output>{{ o.thickness }} px</output
+                >板材厚度 <output>{{ boardEditingO.thickness }} px</output
                 ><input
                   type="range"
                   min="1"
                   max="7"
                   step="0.5"
-                  v-model.number="o.thickness" /></label
+                  v-model.number="boardEditingO.thickness" /></label
               ><label class="range-label"
-                >表面反光 <output>{{ o.shine }}%</output
-                ><input type="range" min="0" max="80" v-model.number="o.shine"
+                >表面反光 <output>{{ boardEditingO.shine }}%</output
+                ><input
+                  type="range"
+                  min="0"
+                  max="80"
+                  v-model.number="boardEditingO.shine"
               /></label>
             </details>
             <div class="preset-save">
@@ -1236,17 +1316,34 @@ export default {
         </section>
         <template v-if="!isPreview">
           <section>
-            <h2><span>02</span> 轮廓与挂孔</h2>
+            <h2>
+              <span>02</span> 轮廓与挂孔{{
+                boardEditingName ? " · " + boardEditingName : ""
+              }}
+            </h2>
+            <label class="select-label"
+              >挂扣<select
+                :value="boardEditingO.hook === false ? 'none' : 'auto'"
+                @change="boardEditingO.hook = $event.target.value !== 'none'"
+              >
+                <option value="auto">需要挂扣</option>
+                <option value="none">无需挂扣</option>
+              </select></label
+            >
             <label class="range-label"
-              >透明留边 <output>{{ o.border }} px</output
+              >透明留边 <output>{{ boardEditingO.border }} px</output
               ><input
                 type="range"
                 min="3"
                 max="25"
-                v-model.number="o.border" /></label
+                v-model.number="boardEditingO.border" /></label
             ><label class="range-label"
-              >轮廓圆滑 <output>{{ o.smooth }}</output
-              ><input type="range" min="0" max="12" v-model.number="o.smooth"
+              >轮廓圆滑 <output>{{ boardEditingO.smooth }}</output
+              ><input
+                type="range"
+                min="0"
+                max="12"
+                v-model.number="boardEditingO.smooth"
             /></label>
             <!-- <template v-if="o.hook">
               <template

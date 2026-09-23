@@ -104,6 +104,12 @@ export default {
       return Number.isFinite(r) ? r : 0;
     },
   },
+  watch: {
+    // 选中板块变化时通知外层（用于按板块编辑材质/轮廓参数）。
+    selectedId(value) {
+      if (value) this.$emit("select", value);
+    },
+  },
   mounted() {
     if (!this.selectedId && this.boards.length) {
       this.selectedId = this.boards[0].id;

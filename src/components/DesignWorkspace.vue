@@ -155,6 +155,7 @@ export default {
           scale: Number(board.scale) || 1,
           rotation: Number(board.rotation) || 0,
           z: Number(board.z) || 0,
+          o: board.o ? Object.assign({}, board.o) : null,
           specSize: board.specSize,
           filename:
             (designer.file && designer.file.name) || board.name + ".png",

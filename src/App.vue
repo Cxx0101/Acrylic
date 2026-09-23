@@ -61,6 +61,7 @@
       @export="onExport"
       @error="onError"
       @upload="applyPatternFile"
+      @board-o-change="onBoardOChange"
       ><DesignWorkspace
         ref="designWorkspace"
         slot="design-canvas"
@@ -83,6 +84,7 @@
           :boards="layoutBoards"
           :scene="editorOptions || {}"
           @change="onBoardsChange"
+          @select="onLayoutSelect"
         />
       </template></AcrylicEditor>
   </div>
@@ -105,6 +107,8 @@ export default {
       boardUrls: [],
       // 设置页布局编辑器产出 / 首页导入的板块布局（JSON boards）。
       planBoards: [],
+      // 设置页当前选中、正在编辑参数的板块。
+      settingsBoardId: null,
       // 未导入方案时，布局编辑器的默认单块占位。
       layoutDefault: [
         {
@@ -207,6 +211,7 @@ export default {
           src: url,
           hole: board.hole || null,
           shapeRegion: board.shapeRegion || null,
+          o: board.o ? Object.assign({}, board.o) : null,
           transform: {
             offsetX: Math.round((Number(board.x) || 250) - 250 - sceneX),
             offsetY: Math.round((Number(board.y) || 255) - 250 - sceneY),
@@ -310,6 +315,25 @@ export default {
     // 设置页布局编辑器的每次改动都同步进 planBoards。
     onBoardsChange(boards) {
       this.planBoards = boards;
+    },
+    // 设置页选中板块 → 编辑器进入该板块的参数编辑。
+    onLayoutSelect(id) {
+      this.settingsBoardId = id;
+      const list = this.planBoards.length ? this.planBoards : this.layoutDefault;
+      const board = list.find((b) => b.id === id);
+      if (this.$refs.editor && this.$refs.editor.setEditingBoard) {
+        this.$refs.editor.setEditingBoard(
+          id,
+          board && board.o,
+          board && board.name,
+        );
+      }
+    },
+    // 每板块参数编辑回写 planBoards（随方案 JSON 导出）。
+    onBoardOChange({ id, o }) {
+      const list = this.planBoards.length ? this.planBoards : this.layoutDefault;
+      const board = list.find((b) => b.id === id);
+      if (board) this.$set(board, "o", o);
     },
     downloadImage() {
       this.$refs.editor.download();
