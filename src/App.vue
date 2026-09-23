@@ -91,13 +91,13 @@
 import AcrylicEditor from "./components/AcrylicEditor";
 import DesignWorkspace from "./components/DesignWorkspace.vue";
 import BoardLayoutEditor from "./components/BoardLayoutEditor.vue";
-import artwork from "./components/AcrylicEditor/assets/artwork.png";
 export default {
   name: "App",
   components: { AcrylicEditor, DesignWorkspace, BoardLayoutEditor },
   data() {
     return {
-      artwork,
+      // 空字符串 = 初始只渲染场景背景，不带默认示例产品。
+      artwork: "",
       options: { material: "glitter", intensity: 85, thickness: 4 },
       editorOptions: null,
       editorReady: false,

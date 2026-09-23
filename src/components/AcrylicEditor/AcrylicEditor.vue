@@ -7,7 +7,6 @@ import {
   composeScene,
   holeOffsetsFromPoint,
 } from "./render";
-import artworkUrl from "./assets/artwork.png";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
@@ -302,21 +301,25 @@ export default {
         // Multi-plate: boardConfigs carries one entry per plate (set via
         // setBoards). Without it we build a single plate from the `src` prop,
         // keeping the legacy path byte-identical.
+        // No propagated src and no plan boards => render the scene background
+        // only; no default demo plate until the user actually designs one.
         const configs =
           engine.boardConfigs && engine.boardConfigs.length
             ? engine.boardConfigs
-            : [
-                {
-                  id: "b0",
-                  src: this.src || artworkUrl,
-                  hole: engine.designHole,
-                  shapeRegionUrl: engine.designShapeRegionUrl,
-                  transform: null,
-                },
-              ];
+            : this.src
+              ? [
+                  {
+                    id: "b0",
+                    src: this.src,
+                    hole: engine.designHole,
+                    shapeRegionUrl: engine.designShapeRegionUrl,
+                    transform: null,
+                  },
+                ]
+              : [];
         const boards = [];
         for (const cfg of configs) {
-          const source = cfg.src || this.src || artworkUrl;
+          const source = cfg.src || this.src;
           const img = await loadImage(source, this.crossOrigin);
           if (img.width * img.height > 25000000)
             throw Error("图片过大，请缩小到 2500 万像素以内。");
@@ -369,8 +372,10 @@ export default {
         if (boards.length === 1 && !boards[0].hole) {
           this.applyDesignHole(boards[0].art);
         }
-        this.filename = this.src ? "传入的图片" : "切图_05.png";
-        this.dimensions = boards[0].width + " × " + boards[0].height;
+        this.filename = this.src ? "传入的图片" : "";
+        this.dimensions = boards.length
+          ? boards[0].width + " × " + boards[0].height
+          : "";
         this.ready = true;
         await this.$nextTick();
         if (engine.destroyed || id !== engine.loadId) return;
