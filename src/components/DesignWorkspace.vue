@@ -13,26 +13,28 @@
       >
         {{ board.name }}
       </button>
-      <button
-        type="button"
-        class="board-action"
-        :disabled="boards.length >= maxBoards"
-        @click="addBoard"
-      >
-        + 新增板块
-      </button>
-      <button
-        type="button"
-        class="board-action"
-        :disabled="boards.length <= 1"
-        @click="removeBoard(activeBoardId)"
-      >
-        删除
-      </button>
+      <template v-if="isSettingsMode">
+        <button
+          type="button"
+          class="board-action"
+          :disabled="boards.length >= maxBoards"
+          @click="addBoard"
+        >
+          + 新增板块
+        </button>
+        <button
+          type="button"
+          class="board-action"
+          :disabled="boards.length <= 1"
+          @click="removeBoard(activeBoardId)"
+        >
+          删除
+        </button>
+      </template>
     </div>
 
-    <!-- 当前板块的装配参数：决定它在合成效果图里的位置与层级 -->
-    <div v-if="currentBoard" class="board-transform">
+    <!-- 当前板块的装配参数：决定它在合成效果图里的位置与层级（仅设置页可改） -->
+    <div v-if="isSettingsMode && currentBoard" class="board-transform">
       <span class="board-transform-title">「{{ currentBoard.name }}」装配</span>
       <label class="transform-field">
         偏移X
@@ -97,6 +99,8 @@ export default {
   components: { PatternDesigner },
   props: {
     embedded: { type: Boolean, default: false },
+    // 'settings' = 设置板块（增删 + 装配参数）；'preview' = 切换板块做设计。
+    mode: { type: String, default: "preview" },
     whiteBorder: { type: Number, default: 16 },
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
@@ -121,6 +125,9 @@ export default {
   computed: {
     currentBoard() {
       return this.boards.find((b) => b.id === this.activeBoardId) || null;
+    },
+    isSettingsMode() {
+      return this.mode === "settings";
     },
   },
   mounted() {

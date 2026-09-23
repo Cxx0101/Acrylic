@@ -46,6 +46,7 @@
         ref="designWorkspace"
         slot="design-canvas"
         embedded
+        :mode="isSettings ? 'settings' : 'preview'"
         :white-border="patternWhiteBorder"
         :cut-line="patternCutLine"
         :dpi="patternDpi"
