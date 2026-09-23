@@ -203,9 +203,16 @@ export default {
         Number(this.editorOptions && this.editorOptions.productX) || 0;
       const sceneY =
         Number(this.editorOptions && this.editorOptions.productY) || 0;
+      const sceneScale =
+        (Number(this.editorOptions && this.editorOptions.productScale) ||
+          100) / 100;
       const list = boards.map((board) => {
         const url = URL.createObjectURL(board.blob);
         this.boardUrls.push(url);
+        // y 是板块区域顶部中心：合成端板体顶相对锚点偏移 +5·s（makeShape
+        // 的 rect top=255），这里把它扣掉，使板体顶精确对齐框顶。
+        const s =
+          sceneScale * (Number(board.scale) || 1);
         return {
           id: board.id,
           src: url,
@@ -214,7 +221,9 @@ export default {
           o: board.o ? Object.assign({}, board.o) : null,
           transform: {
             offsetX: Math.round((Number(board.x) || 250) - 250 - sceneX),
-            offsetY: Math.round((Number(board.y) || 255) - 250 - sceneY),
+            offsetY: Math.round(
+              (Number(board.y) || 255) - 5 * s - 250 - sceneY,
+            ),
             scale: Number(board.scale) || 1,
             rotation: Number(board.rotation) || 0,
             z: Number(board.z) || 0,

@@ -73,7 +73,8 @@
 // 每块占位板 = 一个可拖拽/缩放/旋转的矩形；坐标统一使用 500x500 画布空间，
 // 与 render.js composeScene 的 transform 语义一一对应。
 const BASE_W = 200;
-const BASE_H = 260;
+// 板体经 makeShape 适配后的最大高度（fit 上限 220），占位框 = 板体可能区域。
+const BASE_H = 220;
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 2.5;
 let boardSeq = 0;
@@ -140,10 +141,13 @@ export default {
         top: (board.y / 5) + "%",
         width: (w / 5) + "%",
         height: (h / 5) + "%",
+        // y 是板块区域顶部：框从该点向下延展、旋转绕顶部中心，
+        // 与合成端“板体顶对齐框顶”的锚点保持一致。
         transform:
-          "translate(-50%, -50%) rotate(" +
+          "translate(-50%, 0) rotate(" +
           (Number(board.rotation) + this.sceneRotation) +
           "deg)",
+        transformOrigin: "50% 0",
         zIndex: 10 + (Number(board.z) || 0),
       };
     },
