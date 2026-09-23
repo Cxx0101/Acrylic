@@ -5,10 +5,10 @@
         <span>D</span>
         <div>亚克力Demo<small>ACRYLIC STUDIO</small></div>
       </div>
-      <!-- <nav aria-label="主导航">
+      <nav aria-label="主导航">
         <router-link exact to="/">预览首页</router-link>
         <router-link to="/settings">效果设置</router-link>
-      </nav> -->
+      </nav>
       <button
         v-if="isSettings"
         class="header-action"
