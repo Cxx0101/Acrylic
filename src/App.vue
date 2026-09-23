@@ -17,7 +17,7 @@
       >
         导出方案 JSON
       </button>
-      <template v-else>
+      <div v-else class="header-actions">
         <button class="header-action" @click="$refs.planInput.click()">
           导入方案
         </button>
@@ -28,7 +28,7 @@
         >
           清除方案
         </button>
-      </template>
+      </div>
       <input
         ref="planInput"
         type="file"
@@ -416,6 +416,11 @@ button {
   background: #fff;
   color: #285348;
   border: 1px solid #cfd9d5;
+}
+.header-actions {
+  justify-self: end;
+  display: flex;
+  gap: 10px;
 }
 .page-heading {
   max-width: 1370px;
