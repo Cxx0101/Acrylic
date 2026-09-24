@@ -27,6 +27,8 @@
         :ref="'designer-' + board.id"
         :cutline-svg="board.cutlineSvg"
         :source-size="board.sourceSize || {}"
+        :spec-size="Number(specSize) || Number(board.specSize) || 10"
+        :dpi="dpi"
         :can-apply="Boolean(canApplyMap[board.id])"
         @apply-design="onApplyDesign()"
       />
@@ -39,7 +41,7 @@
         :cut-line="cutLine"
         :dpi="dpi"
         :component-size="componentSize"
-        :spec-size="board.specSize || specSize"
+        :spec-size="Number(specSize) || Number(board.specSize) || 10"
         :interface-tab-enabled="interfaceTabEnabled"
         :interface-guide-width-setting="interfaceGuideWidth"
         :interface-guide-height-setting="interfaceGuideHeight"

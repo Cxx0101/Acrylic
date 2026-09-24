@@ -99,6 +99,7 @@
 // handleFileChange，使合成管线无需感知板块类型。
 import { fabric } from "fabric";
 import { downloadBlob } from "./PatternDesigner/pillowContour";
+import { cropResizeToPngBlob } from "./downloadImage";
 
 const CANVAS_SIZE = 600;
 const STAGE_PADDING = 30;
@@ -118,6 +119,10 @@ export default {
     },
     // 与 PatternDesigner 的「使用此图案」按钮同一语义。
     canApply: { type: Boolean, default: false },
+    // 板块规格尺寸（cm）：标注按刀线宽高比映射到该规格。
+    specSize: { type: Number, default: 10 },
+    // 导出 DPI：下载图片的长边像素 = specSize / 2.54 × dpi。
+    dpi: { type: Number, default: 300 },
   },
   data() {
     return {
@@ -148,13 +153,32 @@ export default {
       if (!this.imageObject) return "刀线已就绪 · 等待上传图片";
       return this.isComplete ? "设计已完成" : "编辑图片中";
     },
+    // 物理标注：刀线宽高比映射到板块规格（长边 = specSize cm），
+    // 与无刀线页「尺寸(cm)」作用于长边的语义一致，不直接用 SVG 像素值。
+    physicalSize() {
+      const bounds = this.cutlineBounds;
+      const spec = Number(this.specSize);
+      if (!bounds || !bounds.width || !bounds.height || !spec) return null;
+      const scale = spec / Math.max(bounds.width, bounds.height);
+      return {
+        width: bounds.width * scale,
+        height: bounds.height * scale,
+        unit: "cm",
+      };
+    },
     widthLabel() {
+      if (this.physicalSize) {
+        return this.formatDimension(this.physicalSize.width, this.physicalSize.unit);
+      }
       return this.formatDimension(
         this.sourceSize.width,
         this.sourceSize.widthUnit,
       );
     },
     heightLabel() {
+      if (this.physicalSize) {
+        return this.formatDimension(this.physicalSize.height, this.physicalSize.unit);
+      }
       return this.formatDimension(
         this.sourceSize.height,
         this.sourceSize.heightUnit,
@@ -384,22 +408,90 @@ export default {
       // 已确定组件后切换面，导出内容需跟随当前面重新生成。
       if (this.isComplete) await this.exportArtworkBlob();
     },
-    // 下载图片：导出裁剪后的图案 PNG（当前面）+ 刀线形状 mask PNG。
+    // 下载图片：与无刀线页 downloadImages 同一套逻辑——
+    // 物理尺寸 = 宽高 cm 各自 round(cm/2.54 × dpi)（长边 = 规格尺寸），
+    // 源画布裁到刀线 bbox 后高质量缩放，PNG 写入 DPI 元数据。
+    // 图案取当前面，mask 始终为真实刀模；与「生成效果图」的 artworkBlob 解耦。
     async downloadImages() {
       if (!this.artworkBlob || this.processing) return;
+      const phys = this.physicalSize;
+      const bounds = this.cutlineBounds;
+      if (!phys || !bounds) return;
+      const dpi = Math.max(1, Math.round(Number(this.dpi) || 300));
+      const targetWidth = Math.max(1, Math.round((phys.width / 2.54) * dpi));
+      const targetHeight = Math.max(1, Math.round((phys.height / 2.54) * dpi));
+      const crop = {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.left + bounds.width,
+        bottom: bounds.top + bounds.height,
+      };
       this.processing = true;
       try {
         const baseName =
           (this.imageName || "cutline-design").replace(/\.[^.]+$/, "") ||
           "cutline-design";
-        downloadBlob(this.artworkBlob, `${baseName}.png`);
-        const maskBlob = await this.getDesignShapeRegion();
-        if (maskBlob) downloadBlob(maskBlob, `${baseName}_mask.png`);
+        const artwork = await this.exportRegionBlob(
+          { hiddenObjects: [this.backdropObject, this.outlineObject] },
+          bounds,
+          crop,
+          targetWidth,
+          targetHeight,
+          dpi,
+        );
+        if (artwork) downloadBlob(artwork, `${baseName}.png`);
+        const mask = await this.exportRegionBlob(
+          {
+            hiddenObjects: [this.imageObject, this.outlineObject],
+            backdropUnflip: true,
+          },
+          bounds,
+          crop,
+          targetWidth,
+          targetHeight,
+          dpi,
+        );
+        if (mask) downloadBlob(mask, `${baseName}_mask.png`);
       } catch (err) {
         console.error(err);
       } finally {
         this.processing = false;
       }
+    },
+    // 导出画布指定区域：临时隐藏对象（/翻回垫底）→ toCanvasElement 快照 →
+    // 复用无刀线页的 crop + 缩放 + DPI 管线。
+    async exportRegionBlob(
+      { hiddenObjects = [], backdropUnflip = false },
+      bounds,
+      crop,
+      targetWidth,
+      targetHeight,
+      dpi,
+    ) {
+      const canvas = this.fabricCanvas;
+      if (!canvas || !bounds) return null;
+      const hidden = [];
+      hiddenObjects.forEach((object) => {
+        if (object) {
+          hidden.push([object, object.visible]);
+          object.visible = false;
+        }
+      });
+      let backdropFlip = null;
+      if (backdropUnflip && this.backdropObject) {
+        backdropFlip = this.backdropObject.flipX;
+        this.backdropObject.flipX = false;
+      }
+      canvas.renderAll();
+      const source = canvas.toCanvasElement(1);
+      if (backdropFlip !== null && this.backdropObject) {
+        this.backdropObject.flipX = backdropFlip;
+      }
+      hidden.forEach(([object, visible]) => {
+        object.visible = visible;
+      });
+      canvas.requestRenderAll();
+      return cropResizeToPngBlob(source, crop, targetWidth, targetHeight, dpi);
     },
     async finishDesign() {
       if (this.isComplete || !this.imageObject) return;

@@ -9,8 +9,21 @@
       ]"
       :style="placeholderStyle(board)"
       @pointerdown.stop.prevent="startDrag(board, $event)"
+      @wheel.prevent="onWheel($event, board)"
     >
       <span class="board-label">{{ board.name }}</span>
+      <template v-if="board.id === selectedId">
+        <div
+          class="board-handle board-handle--scale"
+          title="拖拽缩放"
+          @pointerdown.stop.prevent="startHandle(board, 'scale', $event)"
+        ></div>
+        <div
+          class="board-handle board-handle--rotate"
+          title="拖拽旋转"
+          @pointerdown.stop.prevent="startHandle(board, 'rotate', $event)"
+        ></div>
+      </template>
     </div>
 
     <div class="board-toolbar" @pointerdown.stop>
@@ -40,32 +53,6 @@
         移除刀线
       </button>
       <template v-if="selected">
-        <label class="board-prop">
-          X<input
-            type="number"
-            step="1"
-            :value="selected.x"
-            @input="setProp('x', $event.target.value)"
-          />
-        </label>
-        <label class="board-prop">
-          Y<input
-            type="number"
-            step="1"
-            :value="selected.y"
-            @input="setProp('y', $event.target.value)"
-          />
-        </label>
-        <label class="board-prop">
-          大小<input
-            type="number"
-            step="0.05"
-            min="0.3"
-            max="2.5"
-            :value="selected.scale"
-            @input="setProp('scale', $event.target.value)"
-          />
-        </label>
         <label class="board-prop">
           角度<input
             type="number"
@@ -132,6 +119,8 @@ export default {
     return {
       selectedId: null,
       dragging: null,
+      // 手柄拖拽状态：scale / rotate 直接操作。
+      handleState: null,
     };
   },
   computed: {
@@ -176,7 +165,24 @@ export default {
       return wrap ? wrap.querySelector("canvas") : null;
     },
     placeholderStyle(board) {
-      // SVG 刀线板块：占位区域按 SVG 宽高比适配到基准可能区域内。
+      const { w, h } = this.boardSize(board);
+      return {
+        left: (board.x / 5) + "%",
+        top: (board.y / 5) + "%",
+        width: (w / 5) + "%",
+        height: (h / 5) + "%",
+        // y 是板块区域顶部：框从该点向下延展、旋转绕顶部中心，
+        // 与合成端“板体顶对齐框顶”的锚点保持一致。
+        transform:
+          "translate(-50%, 0) rotate(" +
+          (Number(board.rotation) + this.sceneRotation) +
+          "deg)",
+        transformOrigin: "50% 0",
+        zIndex: 10 + (Number(board.z) || 0),
+      };
+    },
+    // 板块占位框在 500 空间的宽高（SVG 刀线板块按宽高比适配）。
+    boardSize(board) {
       let baseW = BASE_W;
       let baseH = BASE_H;
       if (
@@ -192,22 +198,8 @@ export default {
         baseW = board.svgAspect.w * fit;
         baseH = board.svgAspect.h * fit;
       }
-      const w = baseW * this.sceneScale * board.scale;
-      const h = baseH * this.sceneScale * board.scale;
-      return {
-        left: (board.x / 5) + "%",
-        top: (board.y / 5) + "%",
-        width: (w / 5) + "%",
-        height: (h / 5) + "%",
-        // y 是板块区域顶部：框从该点向下延展、旋转绕顶部中心，
-        // 与合成端“板体顶对齐框顶”的锚点保持一致。
-        transform:
-          "translate(-50%, 0) rotate(" +
-          (Number(board.rotation) + this.sceneRotation) +
-          "deg)",
-        transformOrigin: "50% 0",
-        zIndex: 10 + (Number(board.z) || 0),
-      };
+      const s = this.sceneScale * (Number(board.scale) || 1);
+      return { w: baseW * s, h: baseH * s };
     },
     startDrag(board, e) {
       this.selectedId = board.id;
@@ -225,6 +217,10 @@ export default {
       };
     },
     onPointerMove(e) {
+      if (this.handleState) {
+        this.onHandleMove(e);
+        return;
+      }
       const d = this.dragging;
       if (!d) return;
       const dx = ((e.clientX - d.startX) / d.rect.width) * 500;
@@ -235,17 +231,104 @@ export default {
     },
     endDrag() {
       this.dragging = null;
+      this.handleState = null;
     },
-    onWheel(e) {
-      const board = this.selected;
-      if (!board) return;
+    // 手柄按下：记录旋转/缩放轴心与初始值。
+    // 缩放轴心 = 顶部中心锚点（x,y，与合成端缩放一致）；
+    // 旋转轴心 = 板块中心——合成端绕顶部中心旋转，因此拖拽时同步反算
+    // x/y（A = C − R(θ)·(0,h/2)），让存储值在合成端复现「绕中心旋转」。
+    startHandle(board, mode, e) {
+      this.selectedId = board.id;
+      const canvas = this.getCanvas();
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const toScreen = (p) => ({
+        x: rect.left + (p.x / 500) * rect.width,
+        y: rect.top + (p.y / 500) * rect.height,
+      });
+      const base = {
+        mode,
+        board,
+        startX: e.clientX,
+        startY: e.clientY,
+        origScale: Number(board.scale) || 1,
+        origRotation: Number(board.rotation) || 0,
+      };
+      if (mode === "scale") {
+        this.handleState = {
+          ...base,
+          pivot: toScreen({ x: board.x, y: board.y }),
+          center500: null,
+          h500: 0,
+        };
+      } else {
+        const { h } = this.boardSize(board);
+        const rad = (base.origRotation * Math.PI) / 180;
+        const center500 = {
+          x: (Number(board.x) || 0) - Math.sin(rad) * (h / 2),
+          y: (Number(board.y) || 0) + Math.cos(rad) * (h / 2),
+        };
+        this.handleState = {
+          ...base,
+          pivot: toScreen(center500),
+          center500,
+          h500: h,
+        };
+      }
+    },
+    onHandleMove(e) {
+      const h = this.handleState;
+      if (!h) return;
+      if (h.mode === "scale") {
+        const startDist =
+          Math.hypot(h.startX - h.pivot.x, h.startY - h.pivot.y) || 1;
+        const dist = Math.hypot(e.clientX - h.pivot.x, e.clientY - h.pivot.y);
+        let next = h.origScale * (dist / startDist);
+        next = Math.max(SCALE_MIN, Math.min(SCALE_MAX, next));
+        h.board.scale = Math.round(next * 100) / 100;
+      } else {
+        // 屏幕坐标 y 向下：atan2(dx, dy) 以轴心正下方为 0°、向右为正；
+        // 而 CSS rotate 正角为顺时针（正下方 → 左侧），方向相反，故取负号。
+        const startAngle = Math.atan2(
+          h.startX - h.pivot.x,
+          h.startY - h.pivot.y,
+        );
+        const angle = Math.atan2(
+          e.clientX - h.pivot.x,
+          e.clientY - h.pivot.y,
+        );
+        let deg = h.origRotation - ((angle - startAngle) * 180) / Math.PI;
+        deg = ((deg % 360) + 360) % 360;
+        h.board.rotation = Math.round(deg);
+        // 绕中心旋转：由新角度反算顶部中心锚点位置，保持板块中心不动。
+        const rad = (deg * Math.PI) / 180;
+        h.board.x = Math.round(
+          Math.max(
+            0,
+            Math.min(500, h.center500.x + Math.sin(rad) * (h.h500 / 2)),
+          ),
+        );
+        h.board.y = Math.round(
+          Math.max(
+            0,
+            Math.min(500, h.center500.y - Math.cos(rad) * (h.h500 / 2)),
+          ),
+        );
+      }
+      this.emitChange();
+    },
+    onWheel(e, board) {
+      const target = board || this.selected;
+      if (!target) return;
+      this.selectedId = target.id;
       e.preventDefault();
       const dir = e.deltaY > 0 ? -0.05 : 0.05;
       const next = Math.max(
         SCALE_MIN,
-        Math.min(SCALE_MAX, (Number(board.scale) || 1) + dir),
+        Math.min(SCALE_MAX, (Number(target.scale) || 1) + dir),
       );
-      board.scale = Math.round(next * 100) / 100;
+      target.scale = Math.round(next * 100) / 100;
       this.emitChange();
     },
     addBoard() {
@@ -315,6 +398,24 @@ export default {
       }
       if (key === "x" || key === "y") {
         next = Math.max(0, Math.min(500, Math.round(next)));
+      }
+      if (key === "rotation") {
+        // 与旋转手柄一致：绕板块中心旋转，中心不动，反算锚点位置。
+        next = ((Math.round(next) % 360) + 360) % 360;
+        const { h } = this.boardSize(board);
+        const rad = (next * Math.PI) / 180;
+        const oldRad = (Number(board.rotation) || 0) * (Math.PI / 180);
+        const cx = (Number(board.x) || 0) - Math.sin(oldRad) * (h / 2);
+        const cy = (Number(board.y) || 0) + Math.cos(oldRad) * (h / 2);
+        board.x = Math.round(
+          Math.max(0, Math.min(500, cx + Math.sin(rad) * (h / 2))),
+        );
+        board.y = Math.round(
+          Math.max(0, Math.min(500, cy - Math.cos(rad) * (h / 2))),
+        );
+        board.rotation = next;
+        this.emitChange();
+        return;
       }
       board[key] = next;
       this.emitChange();
@@ -408,6 +509,39 @@ export default {
   border-style: solid;
   border-color: #8fb3aa;
   background: rgba(255, 255, 255, 0.5);
+}
+.board-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #2a7d6e;
+  box-shadow: 0 1px 4px rgba(40, 60, 52, 0.25);
+  touch-action: none;
+  z-index: 2;
+}
+.board-handle--scale {
+  right: -9px;
+  bottom: -9px;
+  cursor: nwse-resize;
+}
+.board-handle--rotate {
+  left: 50%;
+  bottom: -30px;
+  margin-left: -8px;
+  background: #2a7d6e;
+  cursor: grab;
+}
+.board-handle--rotate::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  background: #2a7d6e;
 }
 .board-prop {
   display: flex;
