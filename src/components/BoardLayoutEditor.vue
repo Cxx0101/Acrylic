@@ -54,6 +54,13 @@
       </button>
       <template v-if="selected">
         <label class="board-prop">
+          标识<input
+            type="text"
+            :value="selected.tag"
+            @change="setTag($event.target.value)"
+          />
+        </label>
+        <label class="board-prop">
           角度<input
             type="number"
             step="1"
@@ -333,8 +340,17 @@ export default {
     },
     addBoard() {
       boardSeq += 1;
+      // 板块标识：A/B/C… 顺延跳过已占用，跨方案 JSON 按该标识匹配板块。
+      const used = new Set(
+        this.boards.map((b) => b.tag).filter(Boolean),
+      );
+      let code = 65;
+      while (code <= 90 && used.has(String.fromCharCode(code))) code += 1;
+      const tag =
+        code <= 90 ? String.fromCharCode(code) : "T" + (this.boards.length + 1);
       const board = {
         id: "b" + boardSeq + "-" + Date.now(),
+        tag,
         name: "板块" + (this.boards.length + 1),
         x: 250,
         y: 255,
@@ -345,6 +361,13 @@ export default {
       };
       this.boards.push(board);
       this.selectedId = board.id;
+      this.emitChange();
+    },
+    setTag(value) {
+      const board = this.selected;
+      const tag = String(value || "").trim();
+      if (!board || !tag) return;
+      board.tag = tag;
       this.emitChange();
     },
     removeBoard() {

@@ -8,6 +8,7 @@ export const planStore = Vue.observable({
   layoutDefault: [
     {
       id: "b1",
+      tag: "A",
       name: "板块1",
       x: 250,
       y: 255,
@@ -21,9 +22,23 @@ export const planStore = Vue.observable({
   settingsBoardId: null,
   // 两页编辑器共享的全局效果参数（材质类型/阴影/工艺等整包同步）。
   sharedOptions: null,
+  // 多效果图：导入的多份方案 JSON。每项
+  // { id, name, config, imageUrl, imageBlob, generatedAt }；
+  // config.boards 内板块带 tag（标识），跨方案按标识匹配板块。
+  plans: [],
+  // 当前激活（主画布实时预览）的方案 id。
+  activePlanId: null,
+  // 设计完成状态：tag -> { blob, hole, shapeRegion, filename }（仅运行时）。
+  designStates: {},
 });
 
+// 板块跨方案匹配标识：优先显式 tag，兜底板块名（兼容旧 JSON）。
+export function boardTag(board) {
+  return (board && (board.tag || board.name)) || "";
+}
+
 export const PLAN_CACHE_KEY = "acrylic-board-plan";
+export const PLANS_CACHE_KEY = "acrylic-board-plans";
 
 export function planBoardsOrLayoutDefault() {
   return planStore.planBoards.length
@@ -65,9 +80,42 @@ export function readPlanCache() {
 }
 
 export function writePlanCache(config) {
-  localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify(config));
+  try {
+    localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify(config));
+  } catch (e) {
+    console.warn("方案缓存写入失败", e);
+  }
 }
 
 export function clearPlanCache() {
   localStorage.removeItem(PLAN_CACHE_KEY);
+}
+
+// 多方案缓存：仅存方案配置（图片生成结果为运行时 Blob，不持久化）。
+export function readPlansCache() {
+  try {
+    const raw = localStorage.getItem(PLANS_CACHE_KEY);
+    const list = raw ? JSON.parse(raw) : null;
+    return Array.isArray(list) ? list : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function writePlansCache(plans) {
+  try {
+    const data = (plans || []).map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      config: plan.config,
+    }));
+    localStorage.setItem(PLANS_CACHE_KEY, JSON.stringify(data));
+  } catch (e) {
+    // 多份方案可能超出 localStorage 配额，静默降级为仅运行时保留。
+    console.warn("多方案缓存写入失败", e);
+  }
+}
+
+export function clearPlansCache() {
+  localStorage.removeItem(PLANS_CACHE_KEY);
 }

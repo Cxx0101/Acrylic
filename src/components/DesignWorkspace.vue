@@ -81,6 +81,7 @@ export default {
       fallbackBoards: [
         {
           id: "b1",
+          tag: "A",
           name: "板块1",
           x: 250,
           y: 255,
@@ -159,6 +160,7 @@ export default {
           : null;
         list.push({
           id: board.id,
+          tag: board.tag || board.name,
           name: board.name,
           blob: designer.artworkBlob,
           hole: designer.getDesignHole ? designer.getDesignHole() : null,
