@@ -200,6 +200,8 @@ export default {
       boardEditingId: null,
       boardEditingName: "",
       boardEditingO: {},
+      // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
+      loadingConfig: false,
     };
   },
   computed: {
@@ -828,12 +830,17 @@ export default {
         this.resetAsset(name),
       );
     },
+    // 挂扣变更通知：loadConfig 恢复期间不发（外层效果图重渲依赖它）。
+    notifyHookChange() {
+      if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
+    },
     async selectHook(option) {
       if (!option || !option.id) return;
       if (option.type === "none") {
         this.o.hook = false;
         this.selectedHookId = option.id;
         this.hookName = option.label;
+        this.notifyHookChange();
         return;
       }
       if (option.type === "upload") return;
@@ -843,6 +850,7 @@ export default {
         this.resetAsset("hook");
         this.selectedHookId = option.id;
         this.hookName = option.label;
+        this.notifyHookChange();
         return;
       }
       try {
@@ -857,6 +865,7 @@ export default {
         this.selectedHookId = option.id;
         this.hookName = option.label;
         this.redraw();
+        this.notifyHookChange();
       } catch (e) {
         this.reportError(e);
       }
@@ -903,6 +912,16 @@ export default {
     async loadConfig(config) {
       if (!config || typeof config !== "object" || !config.options)
         throw Error("配置文件格式不正确。");
+      // 加载期 suppress selectHook 的 change 通知：重放挂扣选择属于
+      // 配置恢复而非用户操作，避免触发外层的方案重渲反馈环。
+      this.loadingConfig = true;
+      try {
+        await this.applyLoadConfig(config);
+      } finally {
+        this.loadingConfig = false;
+      }
+    },
+    async applyLoadConfig(config) {
       for (const name of ["background", "hook"]) {
         const embedded = config.assets && config.assets[name];
         if (name === "hook" && embedded && embedded.builtin) {
@@ -1120,13 +1139,9 @@ export default {
     </header>
     <main :class="['editor-' + mode, { 'has-replace': mode === 'preview' && previewReplace }]">
       <aside>
-        <div class="panel-title">
-          <h1>{{ isSettings ? "效果参数" : "快速预览" }}</h1>
-          <button class="text-button" @click="reset">重置参数</button>
-        </div>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
         <section v-if="!isSettings">
-          <h2><span>01</span> 导入与图案</h2>
+          <h2>导入图案</h2>
           <input
             ref="fileInput"
             class="hidden"
@@ -1140,7 +1155,7 @@ export default {
             @drop.prevent="upload($event.dataTransfer.files[0])"
           >
             <span class="upload-icon">＋</span
-            ><strong>{{ busy ? "正在处理…" : "选择透明图案" }}</strong
+            ><strong>选择透明图案</strong
             ><small>点击或拖入 PNG · 最大 20 MB</small>
           </button>
           <div class="file-info">
@@ -1164,7 +1179,7 @@ export default {
           />
         </section>
         <section v-if="!isSettings">
-          <h2><span>02</span> 规格</h2>
+          <h2>规格</h2>
           <div class="spec-options">
             <button
               v-for="size in specSizes"
@@ -1179,7 +1194,7 @@ export default {
         </section>
         <section>
           <h2 v-if="!isSettings">
-            <span>{{ isSettings ? "01" : "03" }}</span> 板材材质
+            板材材质
           </h2>
           <div class="materials" v-if="!isSettings">
             <button
@@ -1289,7 +1304,7 @@ export default {
           </template>
         </section>
         <section v-if="isPreview">
-          <h2><span>04</span> 挂扣选择</h2>
+          <h2>挂扣选择</h2>
           <div class="hook-options">
             <template v-for="option in hookOptions"
               ><label

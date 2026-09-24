@@ -894,6 +894,12 @@ canvas {
     top: 95px
 }
 
+/* 设置页：canvas-wrap 现在包含图片下方的工具栏区，棋盘格底纹只该出现在图片区域外不可见，统一改纯白 */
+.editor-settings .canvas-wrap {
+    background-color: #fff;
+    background-image: none
+}
+
 .editor-preview .panel-title h1:after {
     content: ' · 首页';
     font-size: 11px;

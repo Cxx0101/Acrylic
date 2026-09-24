@@ -1,18 +1,16 @@
-export const DEFAULTS = {
-  whiteBorder: 100,
-  cutLine: 6,
-  dpi: null,
-};
+import { runPillowEngine } from "./pillowEngine";
 
 function makeJobId() {
   return `pillow_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 /**
- * Worker-based pillow sheet contour processing.
- * Accepts a File/Blob or a raw RGBA image descriptor
- * { data: Uint8ClampedArray, width, height, artworkData? }.
- * Returns:
+ * 主线程版 pillow 轮廓处理（不再使用 Web Worker）。
+ * 逻辑与 public/workers/pillow.worker.js 完全一致——算法在 pillowEngine.js。
+ *
+ * 入参可接受 File/Blob 或原始 RGBA 图像描述符
+ * { data: Uint8ClampedArray, width, height, artworkData? }。
+ * 返回：
  * {
  *   blob, contentBlob, backingBlob, artworkMaskBlob, pathBlob,
  *   width, height, dpi, sourceDpi, slot, segment, bounds
@@ -33,112 +31,39 @@ export function buildPillowSheetContour(file, options = {}, config = {}) {
     return Promise.reject(new Error("该方法只能在浏览器端运行"));
   }
 
-  if (typeof Worker === "undefined") {
-    return Promise.reject(new Error("当前浏览器不支持 Web Worker"));
-  }
-
-  // Follow the webpack public path so the worker resolves correctly both in
-  // dev (server root) and in production (/acrylic/ subdirectory).
-  const workerUrl =
-    config.workerUrl || `${__webpack_public_path__}workers/pillow.worker.js`;
+  // 原 Worker 路径下的能力检测（OffscreenCanvas / createImageBitmap）交由
+  // 引擎内部抛出等价错误，这里不再依赖 Worker。
   const onProgress =
     typeof config.onProgress === "function" ? config.onProgress : null;
   const jobId = makeJobId();
 
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(workerUrl);
-    let settled = false;
-
-    const cleanup = () => {
-      worker.onmessage = null;
-      worker.onerror = null;
-      worker.terminate();
-    };
-
-    worker.onmessage = (event) => {
-      const msg = event.data || {};
-      if (msg.jobId !== jobId) return;
-
-      if (msg.type === "progress") {
-        if (onProgress) {
-          onProgress({
-            progress: msg.progress,
-            stage: msg.stage,
-          });
-        }
-        return;
+  // 主线程直接调用引擎，复用与 Worker 完全相同的算法实现。
+  const rawImage = isRawImage
+    ? {
+        data: file.data,
+        artworkData: file.artworkData || null,
+        width: file.width,
+        height: file.height,
       }
+    : null;
+  const input = isRawImage ? null : file;
 
-      if (msg.type === "result") {
-        settled = true;
-        cleanup();
-        const {
-          contentBlob,
-          backingBlob,
-          artworkMaskBlob,
-          pathBlob,
-          mergedBlob,
-        } = msg;
-        resolve({
-          blob: mergedBlob,
-          contentBlob,
-          backingBlob,
-          artworkMaskBlob,
-          pathBlob,
-          width: msg.width,
-          height: msg.height,
-          dpi: msg.dpi,
-          sourceDpi: msg.sourceDpi,
-          slot: msg.slot,
-          segment: msg.segment,
-          bounds: msg.bounds,
-        });
-        return;
-      }
-
-      if (msg.type === "error") {
-        settled = true;
-        cleanup();
-        const error = new Error(msg.message || "图片处理失败");
-        if (msg.stack) error.workerStack = msg.stack;
-        reject(error);
-      }
-    };
-
-    worker.onerror = (event) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error(event.message || "Web Worker 执行失败"));
-    };
-
-    const payload = {
-      type: "build",
-      jobId,
-      file: isRawImage ? null : file,
-      rawImage: isRawImage
-        ? {
-            data: file.data.buffer,
-            artworkData: file.artworkData ? file.artworkData.buffer : null,
-            width: file.width,
-            height: file.height,
-          }
-        : null,
-      options: {
-        ...DEFAULTS,
-        ...options,
-      },
-    };
-    worker.postMessage(
-      payload,
-      isRawImage
-        ? [
-            file.data.buffer,
-            ...(file.artworkData ? [file.artworkData.buffer] : []),
-          ]
-        : [],
-    );
-  });
+  return runPillowEngine(input, options, jobId, rawImage, onProgress).then(
+    (result) => ({
+      blob: result.mergedBlob,
+      contentBlob: result.contentBlob,
+      backingBlob: result.backingBlob,
+      artworkMaskBlob: result.artworkMaskBlob,
+      pathBlob: result.pathBlob,
+      width: result.width,
+      height: result.height,
+      dpi: result.dpi,
+      sourceDpi: result.sourceDpi,
+      slot: result.slot,
+      segment: result.segment,
+      bounds: result.bounds,
+    }),
+  );
 }
 
 export function downloadBlob(blob, filename = "pillow-contour.png") {

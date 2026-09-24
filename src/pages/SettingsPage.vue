@@ -115,6 +115,18 @@ export default {
     // 布局编辑器的每次改动都同步进共享 planBoards。
     onBoardsChange(boards) {
       planStore.planBoards = boards;
+      // 工具栏改名后同步左侧参数面板标题（仅名称变化时重设，避免频繁重建编辑态）
+      const id = planStore.settingsBoardId;
+      if (id && this.$refs.editor && this.$refs.editor.setEditingBoard) {
+        const board = boards.find((b) => b.id === id);
+        if (
+          board &&
+          board.name &&
+          board.name !== this.$refs.editor.boardEditingName
+        ) {
+          this.$refs.editor.setEditingBoard(id, board.o, board.name);
+        }
+      }
     },
     // 选中板块 → 编辑器进入该板块的参数编辑。
     onLayoutSelect(id) {

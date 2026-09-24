@@ -141,6 +141,7 @@ export default {
       boardUrls: [],
       largeViewUrl: null,
       distributing: false,
+      effectsSyncTimer: null,
       // 编辑器每次 setBoards 重初始化都会再发 ready，方案恢复只执行一次。
       restored: false,
     };
@@ -248,6 +249,55 @@ export default {
     onChange(options) {
       this.editorOptions = options;
       this.syncSharedOptions(options);
+      // 侧栏材质/参数变化 → 防抖写回方案并重渲效果图
+      this.scheduleEffectsSync();
+    },
+    // 侧栏切换材质/挂扣后，效果图必须跟着变：把编辑器当前的
+    // options 与挂扣资产写回每个方案 config，再走完整出图链路。
+    scheduleEffectsSync() {
+      if (this.effectsSyncTimer) clearTimeout(this.effectsSyncTimer);
+      this.effectsSyncTimer = setTimeout(() => {
+        this.effectsSyncTimer = null;
+        this.syncPlanOptionsAndRerender();
+      }, 400);
+    },
+    async syncPlanOptionsAndRerender() {
+      if (this.distributing) return;
+      if (!planStore.plans.length) return;
+      const editor = this.$refs.editor;
+      if (!editor || !editor.createConfig || !this.editorOptions) return;
+      const options = this.editorOptions;
+      const hook = editor.createConfig().assets.hook || null;
+      // 挂扣只比对身份字段（选择/文件名/是否内置）：
+      // dataURL 每次重编码可能存在字节差异，不能参与等值判断。
+      const hookKey = (h) =>
+        h
+          ? JSON.stringify({
+              selection: h.selection,
+              name: h.name,
+              builtin: h.builtin,
+            })
+          : "";
+      let dirty = false;
+      planStore.plans.forEach((plan) => {
+        if (
+          JSON.stringify(plan.config.options) !== JSON.stringify(options)
+        ) {
+          plan.config.options = Object.assign({}, options);
+          dirty = true;
+        }
+        if (hook) {
+          const prev = plan.config.assets && plan.config.assets.hook;
+          if (hookKey(prev) !== hookKey(hook)) {
+            plan.config.assets = Object.assign({}, plan.config.assets, {
+              hook,
+            });
+            dirty = true;
+          }
+        }
+      });
+      if (!dirty) return;
+      await this.distributeEffects();
     },
     syncSharedOptions(options) {
       if (!options) return;

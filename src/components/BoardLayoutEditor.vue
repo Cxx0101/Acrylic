@@ -1,34 +1,41 @@
 <template>
   <div>
-<div class="board-layout">
-    <div
-      v-for="board in boards"
-      :key="board.id"
-      :class="[
-        'board-placeholder',
-        { selected: board.id === selectedId, 'board-placeholder--svg': Boolean(board.cutlineSvg) },
-      ]"
-      :style="placeholderStyle(board)"
-      @pointerdown.stop.prevent="startDrag(board, $event)"
-      @wheel.prevent="onWheel($event, board)"
-    >
-      <span class="board-label">{{ board.name }}</span>
-      <template v-if="board.id === selectedId">
-        <div
-          class="board-handle board-handle--scale"
-          title="拖拽缩放"
-          @pointerdown.stop.prevent="startHandle(board, 'scale', $event)"
-        ></div>
-        <div
-          class="board-handle board-handle--rotate"
-          title="拖拽旋转"
-          @pointerdown.stop.prevent="startHandle(board, 'rotate', $event)"
-        ></div>
-      </template>
+    <div class="board-layout">
+      <div
+        v-for="board in boards"
+        :key="board.id"
+        :class="[
+          'board-placeholder',
+          {
+            selected: board.id === selectedId,
+            'board-placeholder--svg': Boolean(board.cutlineSvg),
+          },
+        ]"
+        :style="placeholderStyle(board)"
+        @pointerdown.stop.prevent="startDrag(board, $event)"
+        @wheel.prevent="onWheel($event, board)"
+      >
+        <span class="board-label">{{ board.name }}</span>
+        <template v-if="board.id === selectedId">
+          <div
+            class="board-handle board-handle--scale"
+            title="拖拽缩放"
+            @pointerdown.stop.prevent="startHandle(board, 'scale', $event)"
+          ></div>
+          <div
+            class="board-handle board-handle--rotate"
+            title="拖拽旋转"
+            @pointerdown.stop.prevent="startHandle(board, 'rotate', $event)"
+          ></div>
+        </template>
+      </div>
     </div>
 
+    <!-- 工具栏在图片（canvas）正下方的文档流中，不再悬浮在效果图上 -->
     <div class="board-toolbar" @pointerdown.stop>
-      <button type="button" class="board-tool" @click="addBoard">+ 板块</button>
+      <button type="button" class="board-tool" @click="addBoard">
+        + 板块
+      </button>
       <button
         type="button"
         class="board-tool"
@@ -42,7 +49,10 @@
         <input
           accept=".svg,image/svg+xml"
           type="file"
-          @change="onSvgFile($event.target.files[0]); $event.target.value = ''"
+          @change="
+            onSvgFile($event.target.files[0]);
+            $event.target.value = '';
+          "
         />
       </label>
       <button
@@ -54,6 +64,13 @@
         移除刀线
       </button>
       <template v-if="selected">
+        <label class="board-prop">
+          名称<input
+            type="text" style="width: 120px;"
+            :value="selected.name"
+            @change="setName($event.target.value)"
+          />
+        </label>
         <label class="board-prop">
           标识<input
             type="text"
@@ -80,8 +97,6 @@
       </template>
     </div>
   </div>
-  </div>
-  
 </template>
 
 <script>
@@ -93,8 +108,10 @@ const BASE_W = 200;
 const BASE_H = 220;
 // 读取 SVG 根节点的物理尺寸（支持 mm/cm/in/px），随方案 JSON 传给设计端做标注。
 function readSvgSize(svgText) {
-  const root = new DOMParser().parseFromString(svgText, "image/svg+xml")
-    .documentElement;
+  const root = new DOMParser().parseFromString(
+    svgText,
+    "image/svg+xml",
+  ).documentElement;
   const viewBox = (root.getAttribute("viewBox") || "")
     .trim()
     .split(/[ ,]+/)
@@ -177,10 +194,10 @@ export default {
     placeholderStyle(board) {
       const { w, h } = this.boardSize(board);
       return {
-        left: (board.x / 5) + "%",
-        top: (board.y / 5) + "%",
-        width: (w / 5) + "%",
-        height: (h / 5) + "%",
+        left: board.x / 5 + "%",
+        top: board.y / 5 + "%",
+        width: w / 5 + "%",
+        height: h / 5 + "%",
         // y 是板块区域顶部：框从该点向下延展、旋转绕顶部中心，
         // 与合成端“板体顶对齐框顶”的锚点保持一致。
         transform:
@@ -304,10 +321,7 @@ export default {
           h.startX - h.pivot.x,
           h.startY - h.pivot.y,
         );
-        const angle = Math.atan2(
-          e.clientX - h.pivot.x,
-          e.clientY - h.pivot.y,
-        );
+        const angle = Math.atan2(e.clientX - h.pivot.x, e.clientY - h.pivot.y);
         let deg = h.origRotation - ((angle - startAngle) * 180) / Math.PI;
         deg = ((deg % 360) + 360) % 360;
         h.board.rotation = Math.round(deg);
@@ -344,9 +358,7 @@ export default {
     addBoard() {
       boardSeq += 1;
       // 板块标识：A/B/C… 顺延跳过已占用，跨方案 JSON 按该标识匹配板块。
-      const used = new Set(
-        this.boards.map((b) => b.tag).filter(Boolean),
-      );
+      const used = new Set(this.boards.map((b) => b.tag).filter(Boolean));
       let code = 65;
       while (code <= 90 && used.has(String.fromCharCode(code))) code += 1;
       const tag =
@@ -371,6 +383,14 @@ export default {
       const tag = String(value || "").trim();
       if (!board || !tag) return;
       board.tag = tag;
+      this.emitChange();
+    },
+    // 修改板块名称（占位框标签、设置面板标题、方案 JSON 同步该值）。
+    setName(value) {
+      const board = this.selected;
+      const name = String(value || "").trim();
+      if (!board || !name) return;
+      board.name = name;
       this.emitChange();
     },
     removeBoard() {
@@ -456,7 +476,9 @@ export default {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* 画布 1000x1000 正方形：工具栏进入文档流撑高 canvas-wrap 后，
+     覆盖层仍须只盖住画布区域，占位框百分比定位才与画布对齐 */
+  aspect-ratio: 1 / 1;
   pointer-events: none;
 }
 .board-placeholder {
@@ -486,29 +508,28 @@ export default {
   user-select: none;
 }
 .board-toolbar {
-  position: absolute;
-  left: 50%;
-  bottom: 10px;
-  transform: translateX(-50%);
+  /* 图片正下方的文档流工具栏：根节点在 canvas-wrap 内、canvas 之后 */
+  position: static;
   display: flex;
   align-items: center;
+  /* flex-wrap: wrap; */
   gap: 8px;
+  width: 100%;
+  margin: 12px auto 14px;
   padding: 6px 10px;
   background: #fff;
   border: 1px solid #e1e6e2;
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(40, 60, 52, 0.12);
   pointer-events: auto;
-  width: 80%;
-  /* flex-wrap: wrap; */
-  /* max-width: 96%; */
+  line-height: normal;
 }
 .board-tool {
   border: 1px solid #d7dedb;
   background: #fafcfb;
   color: #4a5652;
   border-radius: 7px;
-  padding:  10px;
+  padding: 10px;
   cursor: pointer;
   font-size: 12px;
 }

@@ -1,5 +1,10 @@
 'use strict';
 
+// 主线程版轮廓引擎：与 public/workers/pillow.worker.js 的算法逐行一致，
+// 仅把 Worker 的 self.onmessage / self.postMessage 消息管道替换为
+// 直接函数调用 + onProgress 回调，其余（PNG 解码/DPI、EDT 距离场、轮廓生成）
+// 完全不变，因此实现逻辑与原 Worker 版本完全一致。
+
 const DEFAULTS = {
     whiteBorder: 100,
     cutLine: 6,
@@ -13,10 +18,6 @@ const DEFAULTS = {
     // 0 表示按照图片尺寸自动计算，适合直接上传的 PNG。
     contourSmoothing: 0,
 };
-
-function postProgress(jobId, progress, stage) {
-    self.postMessage({ type: 'progress', jobId, progress, stage });
-}
 
 function edt1d(f, n) {
     const d = new Float64Array(n);
@@ -67,11 +68,12 @@ function edt2d(f, w, h) {
 
 function readUint32BE(bytes, offset) {
     return (
-        bytes[offset] * 0x1000000 +
-        (bytes[offset + 1] << 16) +
-        (bytes[offset + 2] << 8) +
-        bytes[offset + 3]
-    ) >>> 0;
+        (bytes[offset] * 0x1000000 +
+            (bytes[offset + 1] << 16) +
+            (bytes[offset + 2] << 8) +
+            bytes[offset + 3]) >>>
+        0
+    );
 }
 
 function writeUint32BE(bytes, offset, value) {
@@ -269,7 +271,12 @@ async function decodeToRgba(file) {
     };
 }
 
-async function buildPillowSheetContour(file, options, jobId, rawImage = null) {
+async function runPillowEngine(file, options, jobId, rawImage = null, onProgress = null) {
+    // 进度回调：原 Worker 通过 self.postMessage 上报，这里直接调用回调。
+    function postProgress(jid, progress, stage) {
+        if (onProgress) onProgress({ progress, stage });
+    }
+
     if (typeof OffscreenCanvas === 'undefined') {
         throw new Error('当前浏览器不支持 OffscreenCanvas');
     }
@@ -291,14 +298,14 @@ async function buildPillowSheetContour(file, options, jobId, rawImage = null) {
     opt.edgeTrim = Math.max(0, Math.round(Number(opt.edgeTrim) || 0));
     opt.minObstacleArea = Math.max(
         0,
-        Math.round(Number(opt.minObstacleArea) || 0),
+        Math.round(Number(opt.minObstacleArea) || 0)
     );
     opt.contourSmoothing = Math.max(
         0,
-        Math.round(Number(opt.contourSmoothing) || 0),
+        Math.round(Number(opt.contourSmoothing) || 0)
     );
     opt.innerHoleWhiteBorder = Math.round(
-        Number(opt.innerHoleWhiteBorder) || 0,
+        Number(opt.innerHoleWhiteBorder) || 0
     );
     const {
         whiteBorder,
@@ -666,7 +673,7 @@ async function buildPillowSheetContour(file, options, jobId, rawImage = null) {
     for (let i = 0; i < pixelCount; i++) {
         contourDistance[i] = Math.min(
             distanceCap,
-            Math.sqrt(contourDistance[i]),
+            Math.sqrt(contourDistance[i])
         );
     }
     const horizontalDistance = new Float64Array(pixelCount);
@@ -1069,44 +1076,4 @@ async function buildPillowSheetContour(file, options, jobId, rawImage = null) {
     };
 }
 
-self.onmessage = async (event) => {
-    const msg = event.data || {};
-    if (msg.type !== 'build') return;
-
-    const { jobId, file, options, rawImage } = msg;
-    try {
-        const result = await buildPillowSheetContour(file, options, jobId, rawImage);
-        // 明确逐字段返回，前端可直接读取：
-        // msg.contentBlob / msg.pathBlob / msg.mergedBlob
-        self.postMessage({
-            type: 'result',
-            jobId,
-
-            // 三张 PNG
-            contentBlob: result.contentBlob,
-            backingBlob: result.backingBlob,
-            artworkMaskBlob: result.artworkMaskBlob,
-            pathBlob: result.pathBlob,
-            mergedBlob: result.mergedBlob,
-
-            // 兼容旧代码：blob 等同 mergedBlob
-            blob: result.mergedBlob,
-
-            // 其他元数据
-            width: result.width,
-            height: result.height,
-            dpi: result.dpi,
-            sourceDpi: result.sourceDpi,
-            slot: result.slot,
-            segment: result.segment,
-            bounds: result.bounds,
-        });
-    } catch (error) {
-        self.postMessage({
-            type: 'error',
-            jobId,
-            message: error && error.message ? error.message : String(error),
-            stack: error && error.stack ? error.stack : '',
-        });
-    }
-};
+export { runPillowEngine, DEFAULTS };
