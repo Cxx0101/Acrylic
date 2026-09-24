@@ -74,9 +74,12 @@ export function boardTransform(board, editorOptions) {
   const sceneScale =
     (Number(editorOptions && editorOptions.productScale) || 100) / 100;
   const s = sceneScale * (Number(board.scale) || 1);
+  // 注意不能用 `|| 默认值`：0 是合法坐标（画布左/上边缘）。
+  const bx = Number.isFinite(Number(board.x)) ? Number(board.x) : 250;
+  const by = Number.isFinite(Number(board.y)) ? Number(board.y) : 255;
   return {
-    offsetX: Math.round((Number(board.x) || 250) - 250 - sceneX),
-    offsetY: Math.round((Number(board.y) || 255) - 5 * s - 250 - sceneY),
+    offsetX: Math.round(bx - 250 - sceneX),
+    offsetY: Math.round(by - 5 * s - 250 - sceneY),
     scale: Number(board.scale) || 1,
     rotation: Number(board.rotation) || 0,
     z: Number(board.z) || 0,
@@ -97,18 +100,6 @@ export function readPlanCache() {
   } catch (e) {
     return null;
   }
-}
-
-export function writePlanCache(config) {
-  try {
-    localStorage.setItem(PLAN_CACHE_KEY, JSON.stringify(config));
-  } catch (e) {
-    console.warn("方案缓存写入失败", e);
-  }
-}
-
-export function clearPlanCache() {
-  localStorage.removeItem(PLAN_CACHE_KEY);
 }
 
 // 多方案缓存：仅存方案配置（图片生成结果为运行时 Blob，不持久化）。

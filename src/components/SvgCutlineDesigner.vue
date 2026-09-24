@@ -153,11 +153,6 @@ export default {
     readyToDesign() {
       return Boolean(this.cutlineSvg);
     },
-    statusText() {
-      if (!this.cutlineSvg) return "未上传刀线 SVG";
-      if (!this.imageObject) return "刀线已就绪 · 等待上传图片";
-      return this.isComplete ? "设计已完成" : "编辑图片中";
-    },
     // 物理标注：刀线宽高比映射到板块规格（长边 = specSize cm），
     // 与无刀线页「尺寸(cm)」作用于长边的语义一致，不直接用 SVG 像素值。
     physicalSize() {
@@ -336,11 +331,6 @@ export default {
       if (this.backdropObject && this.fabricCanvas)
         this.fabricCanvas.remove(this.backdropObject);
       this.backdropObject = null;
-    },
-    async onImageSelected(event) {
-      const [file] = event.target.files;
-      event.target.value = "";
-      await this.loadImageFile(file);
     },
     // 与 PatternDesigner.handleFileChange 对齐的入口。
     async handleFileChange(event) {
@@ -709,50 +699,10 @@ export default {
   opacity: 0.48;
 }
 
-.actions .primary-action {
-  color: #fff;
-  background: #285348;
-  box-shadow: 0 4px 10px rgba(50, 121, 255, 0.22);
-}
-
-.actions .primary-action:hover:not(:disabled) {
-  background: #2469e8;
-}
-
-.actions .secondary-action {
-  border-color: #cbd5e3;
-  background: #fff;
-}
-
 .svg-cutline-designer {
   font-size: 13px;
   color: #4a5652;
   display: flex;
-}
-.svg-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 4px 12px;
-}
-.svg-upload {
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 13px;
-  color: #fff;
-  background: #285348;
-  cursor: pointer;
-  font-size: 13px;
-}
-.svg-upload input {
-  display: none;
-}
-.svg-status {
-  color: #77827d;
-}
-.svg-status--ready {
-  color: #1f7a5c;
 }
 .svg-btn {
   border: 1px solid #d7dedb;

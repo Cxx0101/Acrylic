@@ -211,14 +211,12 @@ export default {
   position: absolute;
   top: 10px;
   left: 310px;
-  /* width: 100%; */
 }
 .board-tab {
   border: 1px solid #d7dedb;
   background: #fff;
   color: #4a5652;
   border-radius: 8px;
-  /* padding: 7px 15px; */
   cursor: pointer;
   font-size: 13px;
   width: 60px;

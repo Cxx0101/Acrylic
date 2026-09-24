@@ -1,8 +1,8 @@
 const path = require('path');
 const VueLoaderPlugin = require('vue-loader/lib/plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-// 线上部署在 /acrylic/ 二级目录：生产构建固定 publicPath；dev 保持 auto
-// 以便本机 8080 根路径访问。Worker URL 通过 __webpack_public_path__ 跟随。
+// 线上部署在 /acrylic/ 二级目录：生产构建固定 publicPath；dev 保持 auto，
+// 以便本机 8080 根路径访问。
 module.exports = (env, argv = {}) => {
   const isProd = argv.mode === 'production';
   return {

@@ -75,60 +75,6 @@ const BUILTIN_HOOK_SOURCES = {
   purple: purpleHookUrl,
   red: redHookUrl,
 };
-const SCENES = {
-  studio: {
-    label: "窗帘桌面",
-    options: {
-      background: "scene",
-      productX: 0,
-      productY: 0,
-      productScale: 100,
-      productRotation: 0,
-      shadowX: -7,
-      shadowY: 8,
-      shadowBlur: 5,
-      shadowOpacity: 20,
-    },
-  },
-  closeup: {
-    label: "近景展示",
-    options: {
-      background: "scene",
-      productX: 0,
-      productY: 34,
-      productScale: 122,
-      productRotation: -2,
-      shadowX: -5,
-      shadowY: 9,
-      shadowBlur: 7,
-      shadowOpacity: 24,
-    },
-  },
-  white: {
-    label: "白底商品图",
-    options: {
-      background: "white",
-      productX: 0,
-      productY: 8,
-      productScale: 108,
-      productRotation: 0,
-      shadowX: 2,
-      shadowY: 9,
-      shadowBlur: 9,
-      shadowOpacity: 16,
-    },
-  },
-  transparent: {
-    label: "透明底",
-    options: {
-      background: "transparent",
-      productX: 0,
-      productY: 0,
-      productScale: 100,
-      productRotation: 0,
-    },
-  },
-};
 const BUILTIN = {
   background: backgroundUrl,
   hook: hookUrl,
@@ -180,21 +126,14 @@ export default {
       dimensions: "",
       o: Object.assign({}, DEFAULTS),
       materials: MATERIALS,
-      scenes: SCENES,
       specSizes: [5, 10, 20],
       scenePreset: "studio",
-      detail: false,
       exportSize: 1500,
       exportFormat: "png",
       dragging: false,
-      largeViewUrl: null,
-      presetName: "",
       customPresets: [],
       hookName: "橙色挂扣",
       selectedHookId: "orange",
-      // True while the current artwork carries a design-canvas-derived hole
-      // position; the settings sliders are then replaced by a hint.
-      holeFromDesign: false,
       // Per-plate parameter editing (settings page): the currently selected
       // board and its responsive parameter override object.
       boardEditingId: null,
@@ -205,10 +144,6 @@ export default {
     };
   },
   computed: {
-    materialLabel() {
-      const m = this.materials.find((m) => m[0] === this.o.material);
-      return m ? m[1] : "";
-    },
     isPreview() {
       return this.mode === "preview";
     },
@@ -293,7 +228,6 @@ export default {
     );
     this.engine.boardShapeRegionUrls = [];
     this.engine.designShapeRegionUrl = null;
-    this.closeLargeView();
   },
   methods: {
     reportError(e) {
@@ -532,22 +466,6 @@ export default {
       });
       this.initialize();
     },
-    // Receives the component position picked on the design canvas, expressed
-    // in the pixel space of the artwork blob that is about to be applied.
-    setDesignHole(hole) {
-      const valid =
-        hole &&
-        Number.isFinite(Number(hole.x)) &&
-        Number.isFinite(Number(hole.y));
-      this.engine.designHole = valid
-        ? {
-            x: Number(hole.x),
-            y: Number(hole.y),
-            shape: hole.shape === "square" ? "square" : "ring",
-          }
-        : null;
-      this.holeFromDesign = valid;
-    },
     // Receives the merged component area captured on the design canvas. It
     // only extends the product silhouette (the shape mask), so the acrylic
     // material stays translucent over the added ear and the punched hole
@@ -625,9 +543,6 @@ export default {
         this.o[key] = value;
       });
     },
-    reset() {
-      this.setOptions(DEFAULTS);
-    },
     async upload(file) {
       if (!file || this.busy || !this.ready) return;
       this.error = "";
@@ -677,7 +592,6 @@ export default {
         // A directly uploaded PNG has no design-canvas component; fall back
         // to the manual hole settings.
         engine.designHole = null;
-        this.holeFromDesign = false;
         this.setDesignShapeRegion(null);
         this.filename = file.name;
         this.dimensions = img.width + " × " + img.height;
@@ -694,45 +608,6 @@ export default {
           if (this.$refs.fileInput) this.$refs.fileInput.value = "";
         }
       }
-    },
-    applyScene(name) {
-      if (SCENES[name]) {
-        this.scenePreset = name;
-        this.setOptions(SCENES[name].options);
-      }
-    },
-    saveMaterialPreset() {
-      const name = this.presetName.trim();
-      if (!name) {
-        this.reportError(Error("请先填写材质名称。"));
-        return;
-      }
-      const keys = [
-        "material",
-        "density",
-        "shine",
-        "intensity",
-        "thickness",
-        "tint",
-        "baseColor",
-        "baseOpacity",
-        "textureScale",
-        "textureOpacity",
-      ];
-      const item = { name, options: {} };
-      keys.forEach((k) => {
-        item.options[k] = k === "material" ? this.o[k] : this.boardEditingO[k];
-      });
-      const index = this.customPresets.findIndex((p) => p.name === name);
-      if (index >= 0) this.customPresets.splice(index, 1, item);
-      else this.customPresets.push(item);
-      this.customPresets = this.customPresets.slice();
-      localStorage.setItem(
-        "acrylic-material-presets",
-        JSON.stringify(this.customPresets),
-      );
-      this.presetName = "";
-      this.$emit("preset-save", item);
     },
     applyMaterialPreset(item) {
       if (!item || !item.options) return;
@@ -825,11 +700,6 @@ export default {
         this.redraw();
       }
     },
-    resetAllAssets() {
-      ["background", "hook", "glitter", "reflection"].forEach((name) =>
-        this.resetAsset(name),
-      );
-    },
     // 挂扣变更通知：loadConfig 恢复期间不发（外层效果图重渲依赖它）。
     notifyHookChange() {
       if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
@@ -854,12 +724,22 @@ export default {
         return;
       }
       try {
-        const img = await loadImage(src, this.crossOrigin);
-        if (img.width * img.height > 25000000)
-          throw Error("挂扣图片像素过大。");
+        // 内置挂扣图片按 id 缓存（engine 与组件同生命周期），
+        // 避免每次切换都重新加载+重编码同一张图。
+        const engine = this.engine;
+        engine.builtinHookCache = engine.builtinHookCache || {};
+        let cached = engine.builtinHookCache[option.id];
+        if (!cached) {
+          const img = await loadImage(src, this.crossOrigin);
+          if (img.width * img.height > 25000000)
+            throw Error("挂扣图片像素过大。");
+          cached = { img, dataUrl: imageToDataUrl(img) };
+          engine.builtinHookCache[option.id] = cached;
+        }
+        const { img, dataUrl } = cached;
         this.engine.assetOverrides.hook = img;
         this.engine.assets.hook = img;
-        this.engine.assetData.hook = imageToDataUrl(img);
+        this.engine.assetData.hook = dataUrl;
         this.engine.assetNames.hook = option.label + ".png";
         this.o.hook = true;
         this.selectedHookId = option.id;
@@ -982,49 +862,6 @@ export default {
       }
       this.scenePreset = config.scenePreset || "custom";
       this.redraw();
-      this.$emit("config-load", this.createConfig());
-    },
-    exportConfig() {
-      const blob = new Blob([JSON.stringify(this.createConfig(), null, 2)], {
-          type: "application/json",
-        }),
-        url = URL.createObjectURL(blob),
-        a = document.createElement("a");
-      a.href = url;
-      a.download = "acrylic-design.json";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    },
-    async importConfig(file) {
-      if (!file) return;
-      try {
-        if (file.size > 24 * 1024 * 1024)
-          throw Error("方案文件不能超过 24 MB。");
-        await this.loadConfig(JSON.parse(await file.text()));
-      } catch (e) {
-        this.reportError(e);
-      } finally {
-        if (this.$refs.configInput) this.$refs.configInput.value = "";
-      }
-    },
-    // Renders the current preview at high resolution and shows it in a
-    // lightbox overlay, so the small live panel can be inspected closely.
-    async openLargeView() {
-      if (!this.ready || this.busy) return;
-      try {
-        const blob = await this.exportImage({ size: 1500, format: "png" });
-        if (this.engine.destroyed) return;
-        this.closeLargeView();
-        this.largeViewUrl = URL.createObjectURL(blob);
-      } catch (e) {
-        this.reportError(e);
-      }
-    },
-    closeLargeView() {
-      if (this.largeViewUrl) URL.revokeObjectURL(this.largeViewUrl);
-      this.largeViewUrl = null;
     },
     // Public Promise<Blob> API; does not initiate a download.
     exportImage(options = {}) {
@@ -1126,7 +963,7 @@ export default {
 };
 </script>
 <template>
-  <div :class="['acrylic-editor', { 'lightbox-open': largeViewUrl }]">
+  <div class="acrylic-editor">
     <header v-if="showHeader">
       <div class="brand">
         <span class="logo">透</span
@@ -1162,21 +999,6 @@ export default {
             <span class="file-name">{{ filename }}</span
             ><span>{{ dimensions }}</span>
           </div>
-          <!-- <button
-            v-if="isPreview"
-            class="json-import"
-            @click="$refs.configInput.click()"
-          >
-            导入 JSON 方案</button
-          > -->
-          <input
-            v-if="isPreview"
-            ref="configInput"
-            class="hidden"
-            type="file"
-            accept="application/json,.json"
-            @change="importConfig($event.target.files[0])"
-          />
         </section>
         <section v-if="!isSettings">
           <h2>规格</h2>
@@ -1285,13 +1107,6 @@ export default {
                   v-model.number="boardEditingO.shine"
               /></label>
             </details>
-            <!-- <div class="preset-save">
-              <input
-                v-model.trim="presetName"
-                maxlength="24"
-                placeholder="材质预设名称"
-              /><button @click="saveMaterialPreset">保存材质</button>
-            </div> -->
             <div v-if="customPresets.length" class="preset-list">
               <span v-for="(preset, index) in customPresets" :key="preset.name"
                 ><button @click="applyMaterialPreset(preset)">
@@ -1338,10 +1153,6 @@ export default {
               </button></template
             >
           </div>
-          <!-- <p class="hint">
-            挂扣列表由 hook-options 数组生成；自定义挂扣建议使用透明背景
-            PNG，并会随 JSON 一起保存。
-          </p> -->
         </section>
         <template v-if="!isPreview">
           <section>
@@ -1374,34 +1185,6 @@ export default {
                 max="12"
                 v-model.number="boardEditingO.smooth"
             /></label>
-            <!-- <template v-if="o.hook">
-              <template
-                ><label class="range-label"
-                  >挂孔水平位置 <output>{{ o.holeX }}</output
-                  ><input
-                    type="range"
-                    min="-90"
-                    max="90"
-                    v-model.number="o.holeX" /></label
-                ><label class="range-label"
-                  >挂孔垂直位置 <output>{{ o.holeY }}</output
-                  ><input
-                    type="range"
-                    min="-30"
-                    max="45"
-                    v-model.number="o.holeY"
-                /></label>
-              </template>
-              <p v-if="holeFromDesign" class="hint">
-                挂孔位置已按设计画布中组件的位置自动确定；在预览中拖动连接环可微调。
-              </p>
-              <p class="hint">
-                当前挂扣：{{ hookName }}。也可在预览中拖动连接环调整孔位。
-              </p>
-            </template>
-            <p v-else class="hint">
-              首页当前选择了“无挂扣”；需要挂孔时请返回首页选择挂扣。
-            </p> -->
           </section>
           <section>
             <h2><span>03</span> 图案工艺</h2>
@@ -1505,76 +1288,14 @@ export default {
               /></label>
             </details>
           </section>
-          <section>
-            <!-- <h2><span>05</span> 素材与方案</h2>
-            <p class="hint">
-              导出的 JSON 会嵌入当前背景与挂扣，首页重新导入时会一起恢复。
-            </p> -->
-            <!-- <div class="asset-grid">
-              <label
-                >背景<input
-                  type="file"
-                  accept="image/*"
-                  @change="
-                    uploadAsset('background', $event.target.files[0]);
-                    $event.target.value = '';
-                  "
-              /></label>
-              <label
-                >亮片纹理<input
-                  type="file"
-                  accept="image/*"
-                  @change="
-                    uploadAsset('glitter', $event.target.files[0]);
-                    $event.target.value = '';
-                  "
-              /></label>
-              <label
-                >反光纹理<input
-                  type="file"
-                  accept="image/*"
-                  @change="
-                    uploadAsset('reflection', $event.target.files[0]);
-                    $event.target.value = '';
-                  "
-              /></label>
-            </div> -->
-            <!-- <button class="reset-assets" @click="resetAllAssets">
-              恢复内置素材
-            </button> -->
-            <!-- <div class="config-actions">
-              <button @click="exportConfig">导出完整方案</button
-              ><button @click="$refs.configInput.click()">导入方案</button
-              ><input
-                ref="configInput"
-                class="hidden"
-                type="file"
-                accept="application/json,.json"
-                @change="importConfig($event.target.files[0])"
-              />
-            </div> -->
-          </section>
         </template>
       </aside>
       <section v-if="isPreview" class="design-canvas">
         <slot name="design-canvas"></slot>
       </section>
       <div :class="['workspace', { vacant: previewReplace }]">
-        <!-- <div class="workspace-top">
-          <div>
-            <span class="eyebrow">LIVE PREVIEW</span>
-            <h2>你的设计，正在成形</h2>
-          </div>
-          <button
-            class="preview-badge detail-toggle"
-            :aria-pressed="detail"
-            @click="detail = !detail"
-          >
-            {{ detail ? "查看整体" : "放大材质细节" }}
-          </button>
-        </div> -->
         <div
-          :class="['canvas-wrap', { detail, 'canvas-wrap--replaced': previewReplace }]"
+          :class="['canvas-wrap', { 'canvas-wrap--replaced': previewReplace }]"
         >
           <canvas
             ref="preview"
@@ -1595,59 +1316,8 @@ export default {
         </div>
         <!-- 预览页可提供此插槽：替代 mockup 画布位置（走马灯等） -->
         <slot name="preview-replace"></slot>
-        <!-- <div class="preview-footer">
-          <span>✧ {{ materialLabel }}</span
-          ><span>原图保留 · 自动异形轮廓</span>
-        </div> -->
-        <!-- <div class="bottom-settings">
-          <label
-            >场景背景<select
-              v-model="o.background"
-              @change="scenePreset = 'custom'"
-            >
-              <option value="scene">窗帘与木桌</option>
-              <option value="white">简洁白底</option>
-              <option value="transparent">透明背景</option>
-            </select></label
-          ><label
-            >导出尺寸<select v-model="exportSize">
-              <option :value="1000">1000 × 1000</option>
-              <option :value="1500">1500 × 1500</option>
-              <option :value="2000">2000 × 2000</option>
-            </select></label
-          ><label
-            >文件格式<select v-model="exportFormat">
-              <option value="png">PNG</option>
-              <option value="jpeg">JPG</option>
-            </select></label
-          >
-        </div> -->
-        <!-- <p class="export-note">
-          图片仅在本机浏览器处理。导出清晰度受原图分辨率限制。{{
-            exportFormat === "jpeg" && o.background === "transparent"
-              ? "JPG 不支持透明背景，将导出白底。"
-              : ""
-          }}
-        </p> -->
       </div>
     </main>
-    <div
-      v-if="largeViewUrl"
-      class="large-view-overlay"
-      role="dialog"
-      aria-label="效果图大图"
-      @click="closeLargeView"
-    >
-      <button
-        class="large-view-close"
-        type="button"
-        aria-label="关闭大图"
-        @click.stop="closeLargeView"
-      >
-        ×
-      </button>
-      <img :src="largeViewUrl" alt="亚克力挂件效果图大图" @click.stop />
-    </div>
     <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
   </div>
 </template>

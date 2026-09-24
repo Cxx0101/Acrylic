@@ -43,10 +43,6 @@
               @input="schedulePreviewRegeneration"
             />
           </label>
-          <!-- <label>
-          轮廓圆滑(px，0=自动)
-          <input v-model.number="form.contourSmoothing" type="number" min="0" />
-        </label> -->
         </div>
         <div>
           <label class="toggle-label">
@@ -235,18 +231,6 @@
       <div class="canvas-panel-title">
         <span>设计画布</span>
         <div class="canvas-panel-hint">
-          <!-- <button
-            class="secondary-action"
-            :disabled="
-              processing ||
-              savingCanvasScreenshot ||
-              !fabricCanvas ||
-              !fabricCanvas.backgroundImage
-            "
-            @click="saveCanvasScreenshot"
-          >
-            {{ savingCanvasScreenshot ? "正在保存…" : "保存画布截图" }}
-          </button> -->
           <button
             v-if="embedded"
             class="apply-design-action"
@@ -255,22 +239,6 @@
           >
             生成效果图
           </button>
-          <!-- <button
-            class="primary-action"
-            :disabled="
-              processing || !fabricCanvas || !fabricCanvas.backgroundImage
-            "
-            @click="openReplaceImagePicker"
-          >
-            替换图片
-          </button> -->
-          <input
-            ref="replacementInput"
-            class="file-upload-input"
-            type="file"
-            accept="image/png"
-            @change="handleReplacementFileChange"
-          />
         </div>
       </div>
       <div
@@ -422,7 +390,6 @@ export default {
       isFinalizingComponent: false,
       preMergeState: null,
       processing: false,
-      savingCanvasScreenshot: false,
       progress: 0,
       stage: "",
       error: "",
@@ -1891,11 +1858,6 @@ export default {
       this.generate();
     },
 
-    openReplaceImagePicker() {
-      if (this.processing || !this.file || !this.$refs.replacementInput) return;
-      this.$refs.replacementInput.click();
-    },
-
     async createHorizontallyMirroredFile(file) {
       const image = await this.loadFabricImage(file);
       const source = image.getElement ? image.getElement() : image._element;
@@ -2273,53 +2235,6 @@ export default {
       }
     },
 
-    async handleReplacementFileChange(event) {
-      const replacement = event.target.files && event.target.files[0];
-      event.target.value = "";
-      if (!replacement || this.processing) return;
-      if (replacement.type && replacement.type !== "image/png") {
-        this.error = "请使用带透明通道的 PNG 图片";
-        return;
-      }
-
-      const targetContourLayout = this.getCanvasContourBounds();
-
-      this.processing = true;
-      this.error = "";
-      this.progress = 0;
-      this.stage = "镜像替换图片";
-      try {
-        const mirroredReplacement = await this.createHorizontallyMirroredFile(
-          replacement,
-        );
-        this.stage = "处理替换图片";
-        const frame =
-          this.replacementFrame || (await this.createReplacementFrame());
-        const result = await this.replaceArtworkWithinExistingFrame(
-          mirroredReplacement,
-          frame,
-        );
-        this.file = mirroredReplacement;
-        this.resultBlob = result.blob;
-        this.artworkBlob = result.artworkBlob;
-        this.replacementFrame = frame;
-        this.preMergeState = null;
-        this.finish = false;
-        await this.insertImage(result.blob, {
-          addSticker: false,
-          preserveAccessories: true,
-        });
-        this.alignCanvasContourTo(targetContourLayout);
-        this.storeFaceAsset();
-      } catch (err) {
-        console.error(err);
-        this.error = err.message || "替换图片失败";
-      } finally {
-        this.processing = false;
-        this.stage = "";
-      }
-    },
-
     getPreviewWorkerOptions(width, height, options, whiteBorder, cutLine) {
       const requestedWhiteBorder = Number(whiteBorder) || 0;
       const requestedCutLine = Math.max(0, Number(cutLine) || 0);
@@ -2600,37 +2515,6 @@ export default {
       } finally {
         this.processing = false;
         this.stage = "";
-      }
-    },
-
-    async saveCanvasScreenshot() {
-      if (
-        !this.fabricCanvas ||
-        !this.fabricCanvas.backgroundImage ||
-        this.processing ||
-        this.savingCanvasScreenshot
-      ) {
-        return;
-      }
-
-      this.savingCanvasScreenshot = true;
-      this.error = "";
-      try {
-        // Fabric renders the design objects and dimension annotations, but
-        // deliberately omits the transient selection handles from the PNG.
-        this.fabricCanvas.renderAll();
-        const screenshotCanvas = this.fabricCanvas.toCanvasElement(1);
-        const screenshotBlob = await this.canvasToPngBlob(screenshotCanvas);
-        const baseName = this.getDownloadBaseName(this.file);
-        downloadBlob(
-          screenshotBlob,
-          `${baseName}_${this.activeFace}_canvas.png`,
-        );
-      } catch (err) {
-        console.error(err);
-        this.error = err.message || "保存画布截图失败";
-      } finally {
-        this.savingCanvasScreenshot = false;
       }
     },
 
@@ -4889,12 +4773,6 @@ export default {
   transition: transform 0.15s ease, background-color 0.2s ease,
     border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.canvas-panel-hint .primary-action {
-  color: #fff;
-  background: #285348;
-  box-shadow: 0 4px 10px rgba(50, 121, 255, 0.22);
-  cursor: pointer;
-}
 .canvas-panel-hint .apply-design-action{min-height:40px;padding:0 16px;border:0;border-radius:8px;color:#fff;font-size:14px;font-weight:600;background:#285348;box-shadow:0 4px 10px rgba(40,83,72,.2);cursor:pointer}.canvas-panel-hint .apply-design-action:disabled{opacity:.48;cursor:not-allowed}
 
 .canvas-stage {
@@ -4969,38 +4847,5 @@ progress {
   white-space: pre-wrap;
 }
 
-.preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 20px;
-}
-
-.preview-bg {
-  min-height: 300px;
-  padding: 12px;
-  overflow: auto;
-  background-color: #ddd;
-  background-image: linear-gradient(45deg, #bbb 25%, transparent 25%),
-    linear-gradient(-45deg, #bbb 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #bbb 75%),
-    linear-gradient(-45deg, transparent 75%, #bbb 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-}
-
-.preview-bg img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-}
-
-.meta {
-  margin-top: 8px;
-  font-size: 13px;
-}
-.flex {
-  display: flex;
-}
 .embedded{display:grid!important;grid-template-columns:minmax(250px,310px) minmax(0,1fr)!important;gap:16px;padding:0!important}.embedded>div:first-child{width:auto!important;margin-right:0!important}.embedded .pillow-demo{padding:20px}.embedded .canvas-panel{width:auto;margin:0}.embedded .canvas-stage{min-height:650px;padding:24px}.embedded .canvas-panel-title{padding:0 16px}@media(max-width:900px){.embedded{grid-template-columns:1fr!important}.embedded .canvas-stage{min-height:500px}}
 </style>

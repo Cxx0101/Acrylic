@@ -82,22 +82,6 @@
                   <img v-if="plan.imageUrl" :src="plan.imageUrl" alt="效果图" />
                   <span v-else class="plan-thumb-empty">未生成</span>
                 </div>
-                <!-- <div class="plan-meta">
-                  <span class="plan-name" :title="plan.name">{{ plan.name }}</span>
-                  <span class="plan-tags">
-                    {{ planBoardTags(plan).join(" / ") }}
-                  </span>
-                  <span class="plan-actions">
-                    <button
-                      v-if="plan.imageUrl"
-                      type="button"
-                      @click.stop="viewLarge(plan)"
-                    >
-                      查看大图
-                    </button>
-                    <button type="button" @click.stop="removePlan(plan)">删除</button>
-                  </span>
-                </div> -->
               </div>
             </el-carousel-item>
           </el-carousel>
@@ -107,9 +91,6 @@
         </div>
       </DesignWorkspace>
     </AcrylicEditor>
-    <div v-if="largeViewUrl" class="plan-lightbox" @click="closeLargeView">
-      <img :src="largeViewUrl" alt="效果图大图" @click.stop />
-    </div>
   </div>
 </template>
 <script>
@@ -139,7 +120,6 @@ export default {
       editorReady: false,
       artworkObjectUrl: "",
       boardUrls: [],
-      largeViewUrl: null,
       distributing: false,
       effectsSyncTimer: null,
       // 编辑器每次 setBoards 重初始化都会再发 ready，方案恢复只执行一次。
@@ -315,11 +295,7 @@ export default {
       if (this.$refs.designWorkspace)
         this.$refs.designWorkspace.setPatternFile(file);
     },
-    planBoardTags(plan) {
-      const tags = (plan.config.boards || []).map((b) => boardTag(b));
-      return [...new Set(tags)];
-    },
-    // ---- 多方案：导入 / 激活 / 删除 ----
+    // ---- 多方案：导入 / 激活 ----
     async importPlans(files) {
       const list = Array.from(files || []);
       let firstNew = null;
@@ -391,28 +367,6 @@ export default {
         };
       });
       editor.setBoards(list);
-    },
-    removePlan(plan) {
-      const index = planStore.plans.indexOf(plan);
-      if (index < 0) return;
-      if (plan.imageUrl) URL.revokeObjectURL(plan.imageUrl);
-      planStore.plans.splice(index, 1);
-      writePlansCache(planStore.plans);
-      if (planStore.activePlanId === plan.id) {
-        const next = this.plans[0] || null;
-        if (next) this.activatePlan(next);
-        else if (this.$refs.editor && this.$refs.editor.setBoards) {
-          this.$refs.editor.setBoards([]);
-        }
-      }
-    },
-    viewLarge(plan) {
-      if (!plan.imageUrl) return;
-      this.closeLargeView();
-      this.largeViewUrl = plan.imageUrl;
-    },
-    closeLargeView() {
-      this.largeViewUrl = null;
     },
     // ---- 分发：设计完成的板块按标识分发到各效果图 ----
     async applyDesign({ boards }) {
@@ -588,9 +542,6 @@ export default {
         this.$refs.editor.setBoards([]);
       }
     },
-    async getResultBlob() {
-      return this.$refs.editor.exportImage({ size: 1500, format: "png" });
-    },
   },
   beforeDestroy() {
     if (this.artworkObjectUrl) URL.revokeObjectURL(this.artworkObjectUrl);
@@ -612,11 +563,6 @@ export default {
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 8px;
-}
-.plan-carousel-hint {
-  color: #8a94a6;
-  font-size: 11px;
-  font-weight: 400;
 }
 /* 无方案空态：替代走马灯占位，避免渲染一整个空白 1:1 方块 */
 .plan-carousel-empty {
@@ -682,52 +628,6 @@ export default {
   color: #8a94a6;
   font-size: 12px;
 }
-.plan-meta {
-  display: grid;
-  gap: 2px;
-  font-size: 11px;
-  color: #40506a;
-}
-.plan-name {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.plan-tags {
-  color: #8a94a6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.plan-actions {
-  display: flex;
-  gap: 6px;
-}
-.plan-actions button {
-  border: 1px solid #d7dedb;
-  border-radius: 6px;
-  background: #fff;
-  color: #40506a;
-  font-size: 11px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.plan-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(15, 23, 42, 0.72);
-  cursor: zoom-out;
-}
-.plan-lightbox img {
-  max-width: 92vw;
-  max-height: 92vh;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-}
 </style>
 
 <style>
@@ -769,7 +669,6 @@ export default {
   padding: 16px;
   background: #fff;
   border: 1px solid #e4eaf3;
-  /* border-radius: 16px; */
   box-shadow: 0 10px 30px rgba(35, 55, 80, 0.08);
 }
 /* 有效果图方案时：整个卡片占满右列（从第 1 行顶起，与中列板块条齐平，

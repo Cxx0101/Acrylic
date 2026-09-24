@@ -512,7 +512,6 @@ export default {
   position: static;
   display: flex;
   align-items: center;
-  /* flex-wrap: wrap; */
   gap: 8px;
   width: 100%;
   margin: 12px auto 14px;
