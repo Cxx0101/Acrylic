@@ -39,6 +39,7 @@ import {
   planBoardsOrLayoutDefault,
   assemblePlan,
   readPlanCache,
+  migrateLegacyBoard,
 } from "../planStore.js";
 
 export default {
@@ -142,6 +143,7 @@ export default {
           config.boards.length &&
           !planStore.planBoards.length
         ) {
+          config.boards.forEach(migrateLegacyBoard);
           planStore.planBoards = config.boards;
         }
         if (

@@ -161,6 +161,9 @@ export default {
     },
     showHeader: { type: Boolean, default: true },
     deferArtworkUpload: { type: Boolean, default: false },
+    // 预览页用走马灯替换 mockup 预览时置 true：canvas-wrap 仅隐藏不销毁，
+    // exportImage / setBoards 渲染链不受影响。
+    previewReplace: { type: Boolean, default: false },
     hookOptions: {
       type: Array,
       default: () =>
@@ -1115,7 +1118,7 @@ export default {
         ↓ 导出效果图
       </button>
     </header>
-    <main :class="'editor-' + mode">
+    <main :class="['editor-' + mode, { 'has-replace': mode === 'preview' && previewReplace }]">
       <aside>
         <div class="panel-title">
           <h1>{{ isSettings ? "效果参数" : "快速预览" }}</h1>
@@ -1541,7 +1544,7 @@ export default {
       <section v-if="isPreview" class="design-canvas">
         <slot name="design-canvas"></slot>
       </section>
-      <div class="workspace">
+      <div :class="['workspace', { vacant: previewReplace }]">
         <!-- <div class="workspace-top">
           <div>
             <span class="eyebrow">LIVE PREVIEW</span>
@@ -1555,7 +1558,9 @@ export default {
             {{ detail ? "查看整体" : "放大材质细节" }}
           </button>
         </div> -->
-        <div :class="['canvas-wrap', { detail }]">
+        <div
+          :class="['canvas-wrap', { detail, 'canvas-wrap--replaced': previewReplace }]"
+        >
           <canvas
             ref="preview"
             width="1000"
@@ -1572,15 +1577,9 @@ export default {
           <div v-if="!ready" class="loading">
             {{ error || "正在准备素材…" }}
           </div>
-          <button
-            v-if="ready"
-            class="view-large-action"
-            :disabled="busy"
-            @click="openLargeView"
-          >
-            查看大图
-          </button>
         </div>
+        <!-- 预览页可提供此插槽：替代 mockup 画布位置（走马灯等） -->
+        <slot name="preview-replace"></slot>
         <!-- <div class="preview-footer">
           <span>✧ {{ materialLabel }}</span
           ><span>原图保留 · 自动异形轮廓</span>

@@ -95,7 +95,7 @@ header {
 main {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr);
-    max-width: 1500px;
+    /* max-width: 1500px; */
     margin: auto;
     min-height: 600px
 }
@@ -568,29 +568,30 @@ canvas {
 
 /* Preview is a design-first workspace: parameters, editable artboard, then product mockup. */
 .editor-preview {
-    grid-template-columns: 300px minmax(620px, 1fr) 400px;
-    max-width: 1800px;
+    grid-template-columns: 300px minmax(620px, 1fr) 460px;
+    grid-template-rows: auto auto 1fr;
+    max-width: none;
     align-items: start
 }
 
 .editor-preview aside {
+    grid-row: 1 / 4;
+    grid-column: 1;
     padding: 25px 20px
 }
 
-.editor-preview .design-canvas {
-    min-width: 0;
-    padding: 30px 26px;
-    background: #f7f8f7;
-    border-right: 1px solid #e4e6e5
-}
-
 .editor-preview .workspace {
-    position: sticky;
-    top: 95px;
+    grid-row: 2;
     grid-column: 3;
-    max-width: 396px;
+    position: relative;
+    max-width: none;
     padding: 28px 18px 24px;
     margin: 0
+}
+
+/* 有效果图方案时右列交给 pd-side-stack，mockup 预览区整体让位（canvas 仍在 DOM） */
+.editor-preview .workspace.vacant {
+    display: none
 }
 
 .editor-preview .workspace-top {
@@ -604,6 +605,11 @@ canvas {
 .editor-preview .canvas-wrap {
     max-width: 360px;
     border-radius: 10px
+}
+
+/* 走马灯替换 mockup 预览：只隐藏画布，不销毁（exportImage 仍需它） */
+.canvas-wrap--replaced {
+    display: none
 }
 
 .editor-preview .preview-footer {
@@ -661,7 +667,6 @@ canvas {
     }
 
     .editor-preview .workspace {
-        grid-column: 2;
         position: static;
         max-width: 100%;
         border-top: 1px solid #e4e6e5
@@ -807,7 +812,7 @@ canvas {
 
 .asset-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* grid-template-columns: 1fr 1fr; */
     gap: 8px;
     margin: 12px 0
 }
@@ -885,8 +890,8 @@ canvas {
 
 .editor-settings .workspace {
     align-self: start;
-position: sticky;
-top: 95px
+    position: sticky;
+    top: 95px
 }
 
 .editor-preview .panel-title h1:after {
@@ -999,6 +1004,7 @@ top: 95px
     overflow: hidden;
     text-overflow: ellipsis
 }
+
 /* 查看大图：预览右下角入口 + 全屏灯箱 */
 /* isolation: isolate traps the fixed overlay in the component stacking
    context, where the sticky header (z-index 10) paints above it. Lift the

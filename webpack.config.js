@@ -37,7 +37,7 @@ module.exports = (env, argv = {}) => {
     entry: './src/main.js',
     output: { path: path.resolve(__dirname, 'dist'), filename: 'js/[name].[contenthash:8].js', publicPath: isProd ? '/acrylic/' : 'auto', clean: true },
     resolve: { extensions: ['.js', '.vue'], alias: { 'vue$': 'vue/dist/vue.runtime.esm.js' } },
-    module: { rules: [{ test: /\.vue$/, enforce: 'post', resourceQuery: query => !query, use: path.resolve(__dirname, 'build/vue-style-imports-loader.cjs') }, { test: /\.vue$/, loader: 'vue-loader' }, { test: /\.css$/, use: ['vue-style-loader', { loader: 'css-loader', options: { esModule: false } }] }, { test: /\.(png|jpe?g)$/, type: 'asset/resource', generator: { filename: 'assets/[name].[contenthash:8][ext]' } }] },
+    module: { rules: [{ test: /\.vue$/, enforce: 'post', resourceQuery: query => !query, use: path.resolve(__dirname, 'build/vue-style-imports-loader.cjs') }, { test: /\.vue$/, loader: 'vue-loader' }, { test: /\.css$/, use: ['vue-style-loader', { loader: 'css-loader', options: { esModule: false } }] }, { test: /\.(png|jpe?g)$/, type: 'asset/resource', generator: { filename: 'assets/[name].[contenthash:8][ext]' } }, { test: /\.(woff2?|eot|ttf|otf)$/, type: 'asset/resource', generator: { filename: 'assets/[name].[contenthash:8][ext]' } }] },
     plugins: [new VueLoaderPlugin(), new HtmlWebpackPlugin({ template: './public/index.html' }), new CopyPublicWorkersPlugin()],
     devServer: { port: 8080, open: false }, performance: { hints: false }
   };

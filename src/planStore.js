@@ -1,6 +1,24 @@
 import Vue from "vue";
 
 // 首页 / 设置页共享的方案状态。Vue.observable 保证跨页面组件的响应式。
+// 板块默认锚点（顶部中心）：x 水平居中，y = 250 − 框高 220/2，垂直居中。
+export const BOARD_DEFAULT_X = 250;
+export const BOARD_DEFAULT_Y = 140;
+// 旧版默认锚点（y=255 使占位框偏下方），恢复缓存时迁移到居中位置。
+const LEGACY_DEFAULT_Y = 255;
+
+// 未手动挪过位的旧默认板块归位到垂直居中（幂等）。
+export function migrateLegacyBoard(board) {
+  if (
+    board &&
+    Number(board.x) === BOARD_DEFAULT_X &&
+    Number(board.y) === LEGACY_DEFAULT_Y
+  ) {
+    board.y = BOARD_DEFAULT_Y;
+  }
+  return board;
+}
+
 export const planStore = Vue.observable({
   // 设置页布局编辑器产出 / 首页导入的板块布局（JSON boards）。
   planBoards: [],
@@ -10,8 +28,8 @@ export const planStore = Vue.observable({
       id: "b1",
       tag: "A",
       name: "板块1",
-      x: 250,
-      y: 255,
+      x: BOARD_DEFAULT_X,
+      y: BOARD_DEFAULT_Y,
       scale: 1,
       rotation: 0,
       z: 0,
@@ -41,9 +59,11 @@ export const PLAN_CACHE_KEY = "acrylic-board-plan";
 export const PLANS_CACHE_KEY = "acrylic-board-plans";
 
 export function planBoardsOrLayoutDefault() {
-  return planStore.planBoards.length
-    ? planStore.planBoards
-    : planStore.layoutDefault;
+  if (planStore.planBoards.length) {
+    planStore.planBoards.forEach(migrateLegacyBoard);
+    return planStore.planBoards;
+  }
+  return planStore.layoutDefault;
 }
 
 // y 是板块区域顶部中心：合成端板体顶相对锚点偏移 +5·s（makeShape 的

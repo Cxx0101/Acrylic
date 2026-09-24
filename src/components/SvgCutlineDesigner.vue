@@ -1,7 +1,11 @@
 <template>
   <div class="svg-cutline-designer">
-    <div class="pillow-demo">
-      <div class="actions">
+    <!-- 右侧竖排容器：与 PatternDesigner 同构——slot（效果图走马灯）+ 组件操作区，
+         默认 display:contents 不影响原布局；预览页穿透后成为右列卡片 -->
+    <div class="pd-side-stack">
+      <slot></slot>
+      <div class="pillow-demo">
+        <div class="actions">
         <div class="face-switch" role="group" aria-label="图案面切换">
           <button
             type="button"
@@ -52,6 +56,7 @@
         >
           下载图片
         </button>
+        </div>
       </div>
     </div>
     <div class="canvas-panel">
@@ -659,6 +664,10 @@ export default {
 };
 </script>
 <style scoped>
+/* 默认不影响布局；预览页穿透链把它提升为右列卡片（与 PatternDesigner 一致） */
+.pd-side-stack {
+  display: contents;
+}
 .pillow-demo {
   margin: 0 auto;
   padding: 28px;
@@ -702,7 +711,7 @@ export default {
 
 .actions .primary-action {
   color: #fff;
-  background: #3279ff;
+  background: #285348;
   box-shadow: 0 4px 10px rgba(50, 121, 255, 0.22);
 }
 

@@ -31,7 +31,10 @@
         :dpi="dpi"
         :can-apply="Boolean(canApplyMap[board.id])"
         @apply-design="onApplyDesign()"
-      />
+      >
+        <!-- 预览页经此转发效果图走马灯；只挂当前激活板块，避免多实例重复渲染 -->
+        <slot v-if="board.id === activeBoardId"></slot>
+      </SvgCutlineDesigner>
       <PatternDesigner
         v-else
         :ref="'designer-' + board.id"
@@ -48,7 +51,10 @@
         :interface-tab-width-setting="interfaceTabWidth"
         :interface-tab-height-setting="interfaceTabHeight"
         @apply-design="onApplyDesign()"
-      />
+      >
+        <!-- 预览页经此转发效果图走马灯；只挂当前激活板块，避免多实例重复渲染 -->
+        <slot v-if="board.id === activeBoardId"></slot>
+      </PatternDesigner>
     </div>
   </section>
 </template>
@@ -84,7 +90,7 @@ export default {
           tag: "A",
           name: "板块1",
           x: 250,
-          y: 255,
+          y: 140, // 250 − 框高 220/2，初始垂直居中
           scale: 1,
           rotation: 0,
           z: 0,
@@ -197,19 +203,26 @@ export default {
 }
 .board-bar {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 7px;
   flex-wrap: wrap;
   padding: 4px 4px 12px;
+  position: absolute;
+  top: 10px;
+  left: 310px;
+  /* width: 100%; */
 }
 .board-tab {
   border: 1px solid #d7dedb;
   background: #fff;
   color: #4a5652;
   border-radius: 8px;
-  padding: 7px 15px;
+  /* padding: 7px 15px; */
   cursor: pointer;
   font-size: 13px;
+  width: 60px;
+  height: 60px;
 }
 .board-tab.active {
   background: #244941;

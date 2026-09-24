@@ -1,7 +1,11 @@
 <template>
   <div :class="{ embedded }" style="display: flex; margin: 0 auto; padding: 20px">
     <div style="width: 60%; margin-right: 20px">
-      <div class="pillow-demo">
+      <!-- 右侧竖排容器：默认 display:contents 不影响原布局；
+           预览页覆盖为真实卡片，内含（slot 传入的）效果图走马灯 + 组件设置面板 -->
+      <div class="pd-side-stack">
+        <slot></slot>
+        <div class="pillow-demo">
         <div v-if="!embedded" class="row">
           <label class="file-upload">
             <input
@@ -225,6 +229,7 @@
           {{ error }}
         </div>
       </div>
+      </div>
     </div>
     <div class="canvas-panel">
       <div class="canvas-panel-title">
@@ -325,7 +330,7 @@ function renderStickerRotateControl(ctx, left, top, styleOverride, target) {
   ctx.save();
   ctx.translate(left, top);
   ctx.rotate(fabric.util.degreesToRadians(target.angle || 0));
-  ctx.fillStyle = "#3279ff";
+  ctx.fillStyle = "#285348";
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 1.8;
   ctx.beginPath();
@@ -1702,7 +1707,7 @@ export default {
         angle: currentPosition ? currentPosition.angle : 0,
         hasControls: true,
         hasBorders: true,
-        borderColor: "#3279ff",
+        borderColor: "#285348",
         borderDashArray: [4, 3],
         controls: this.createStickerControls(),
         lockScalingX: true,
@@ -1824,7 +1829,7 @@ export default {
         originX: "center",
         originY: "center",
         fill: "rgba(50, 121, 255, 0.14)",
-        stroke: "#3279ff",
+        stroke: "#285348",
         strokeWidth: 1,
         hasControls: false,
         hasBorders: false,
@@ -4548,6 +4553,10 @@ export default {
 };
 </script>
 <style scoped>
+.pd-side-stack {
+  display: contents;
+}
+
 .pillow-demo {
   margin: 0 auto;
   padding: 28px;
@@ -4587,7 +4596,7 @@ export default {
 
 .file-upload:hover,
 .file-upload:focus-within {
-  border-color: #3279ff;
+  border-color: #285348;
   background: #f3f7ff;
   box-shadow: 0 0 0 3px rgba(50, 121, 255, 0.12);
 }
@@ -4610,7 +4619,7 @@ export default {
   color: #fff;
   font-size: 14px;
   font-weight: 600;
-  background: #3279ff;
+  background: #285348;
 }
 
 .file-upload-name {
@@ -4686,7 +4695,7 @@ export default {
 }
 
 .sticker-pattern-buttons button.active {
-  border-color: #3279ff;
+  border-color: #285348;
   color: #1d5fd0;
   background: #edf4ff;
   box-shadow: 0 0 0 3px rgba(50, 121, 255, 0.13);
@@ -4731,7 +4740,7 @@ export default {
 
 .form-grid input:focus,
 .form-grid select:focus {
-  border-color: #3279ff;
+  border-color: #285348;
   box-shadow: 0 0 0 3px rgba(50, 121, 255, 0.13);
 }
 
@@ -4777,7 +4786,7 @@ export default {
 
 .actions .primary-action {
   color: #fff;
-  background: #3279ff;
+  background: #285348;
   box-shadow: 0 4px 10px rgba(50, 121, 255, 0.22);
 }
 
@@ -4812,7 +4821,7 @@ export default {
 
 .face-switch button.active {
   color: #fff;
-  background: #3279ff;
+  background: #285348;
 }
 
 .toggle-label {
@@ -4829,7 +4838,7 @@ export default {
   width: 16px;
   height: 16px;
   margin: 0 8px 0 0;
-  accent-color: #3279ff;
+  accent-color: #285348;
   cursor: pointer;
 }
 
@@ -4839,7 +4848,7 @@ export default {
 
 .canvas-panel {
   width: 100%;
-  margin: 4px 0 28px;
+  margin: 20px 0 28px;
   overflow: hidden;
   border: 1px solid #e4eaf3;
   border-radius: 16px;
@@ -4882,7 +4891,7 @@ export default {
 }
 .canvas-panel-hint .primary-action {
   color: #fff;
-  background: #3279ff;
+  background: #285348;
   box-shadow: 0 4px 10px rgba(50, 121, 255, 0.22);
   cursor: pointer;
 }

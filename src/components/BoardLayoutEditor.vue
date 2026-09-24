@@ -1,5 +1,6 @@
 <template>
-  <div class="board-layout">
+  <div>
+<div class="board-layout">
     <div
       v-for="board in boards"
       :key="board.id"
@@ -79,6 +80,8 @@
       </template>
     </div>
   </div>
+  </div>
+  
 </template>
 
 <script>
@@ -353,7 +356,7 @@ export default {
         tag,
         name: "板块" + (this.boards.length + 1),
         x: 250,
-        y: 255,
+        y: 140, // 250 − 框高 220/2，初始垂直居中
         scale: 1,
         rotation: 0,
         z: this.boards.length,
@@ -496,8 +499,9 @@ export default {
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(40, 60, 52, 0.12);
   pointer-events: auto;
-  flex-wrap: wrap;
-  max-width: 96%;
+  width: 80%;
+  /* flex-wrap: wrap; */
+  /* max-width: 96%; */
 }
 .board-tool {
   border: 1px solid #d7dedb;

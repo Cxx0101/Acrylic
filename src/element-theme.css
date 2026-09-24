@@ -1,0 +1,23 @@
+/* 覆盖 Element UI 主题主色，与项目暗绿主色 #285348 保持一致 */
+:root {
+  --el-color-primary: #285348;
+}
+.el-button--primary {
+  background-color: #285348;
+  border-color: #285348;
+}
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background-color: #2f6356;
+  border-color: #2f6356;
+}
+/* 走马灯箭头/指示点跟随主色 */
+.el-carousel__arrow {
+  background-color: rgba(40, 83, 72, 0.6);
+}
+.el-carousel__arrow:hover {
+  background-color: #285348;
+}
+.el-carousel__button {
+  background-color: #285348;
+}
