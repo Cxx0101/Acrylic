@@ -1,10 +1,10 @@
 const fs=require('fs'),assert=require('assert'),vm=require('vm'),compiler=require('vue-template-compiler'),Vue=require('vue');
-const source=fs.readFileSync('src/components/AcrylicEditor/AcrylicEditor.vue','utf8');
+const source=fs.readFileSync('src/home/AcrylicEditor/AcrylicEditor.vue','utf8');
 const sfc=compiler.parseComponent(source),compiled=compiler.compile(sfc.template.content);
 assert.deepStrictEqual(compiled.errors,[],'Vue 2 template compilation failed');new Function(compiled.render);
 assert(sfc.styles.every(s=>s.scoped),'Component styles must be scoped');
 const script=sfc.script.content.replace(/^import[^;]*;\r?\n/gm,'').replace('export default {','module.exports = {');
-const context={module:{exports:{}},artworkUrl:'artwork.png',backgroundUrl:'background.png',hookUrl:'hook.png',redHookUrl:'redHook.png',blueHookUrl:'blueHook.png',greenHookUrl:'greenHook.png',purpleHookUrl:'purpleHook.png',glitterUrl:'glitter.png',reflectionUrl:'reflection.png',setTimeout,clearTimeout,console,loadImage:()=>Promise.reject(new Error('test'))};vm.createContext(context);vm.runInContext(script,context);
+const context={module:{exports:{}},artworkUrl:'artwork.png',backgroundUrl:'background.png',hookUrl:'hook.png',redHookUrl:'redHook.png',blueHookUrl:'blueHook.png',greenHookUrl:'greenHook.png',purpleHookUrl:'purpleHook.png',glitterUrl:'glitter.png',reflectionUrl:'reflection.png',setTimeout,clearTimeout,console,loadImage:()=>Promise.reject(new Error('test')),SPEC_SIZES:[{value:5,label:'5cm',scale:1},{value:10,label:'10cm',scale:2},{value:20,label:'20cm',scale:4}],SPEC_DEFAULT_SIZE:5};vm.createContext(context);vm.runInContext(script,context);
 const Component=Vue.extend(context.module.exports),a=new Component({propsData:{initialOptions:{material:'frost',intensity:999},hookOptions:[{id:'gold',label:'金色挂扣',type:'builtin'},{id:'off',label:'无挂扣',type:'none'}]}}),b=new Component();
 assert.strictEqual(a.o.material,'frost');assert.strictEqual(a.o.intensity,100);assert.strictEqual(b.o.material,'glitter');
 a.setOptions({border:-20,material:'invalid',tint:'bad',hook:false});assert.strictEqual(a.o.border,3);assert.strictEqual(a.o.material,'frost');assert.strictEqual(a.o.tint,'#8c68df');assert.strictEqual(a.o.hook,false);

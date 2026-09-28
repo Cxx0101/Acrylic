@@ -65,7 +65,7 @@ export function mergeLocalContourPixels(
     for (let channel = 0; channel < 3; channel += 1) {
       result[offset + channel] = alpha
         ? (original[offset + channel] * oldAlpha +
-            rebuilt[offset + channel] * newAlpha) / alpha
+          rebuilt[offset + channel] * newAlpha) / alpha
         : 0;
     }
     result[offset + 3] = alpha;
@@ -215,9 +215,9 @@ export function getMaximumDiameterPair(points, preferredNormal = null) {
       // connectors land on opposite sides of the attachment.
       const parallelScore = normalLength
         ? Math.abs(
-            (dx * preferredNormal.x + dy * preferredNormal.y) /
-              (Math.sqrt(distance) * normalLength || 1),
-          )
+          (dx * preferredNormal.x + dy * preferredNormal.y) /
+          (Math.sqrt(distance) * normalLength || 1),
+        )
         : 0;
       if (
         distance > maximumDistance + 1e-6 ||
@@ -245,7 +245,7 @@ export function selectSmoothContourPoint(
     if (
       avoidPoint &&
       Math.hypot(candidate.x - avoidPoint.x, candidate.y - avoidPoint.y) <
-        minimumSeparation
+      minimumSeparation
     ) {
       return;
     }

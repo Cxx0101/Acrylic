@@ -14,8 +14,6 @@
     <AcrylicEditor
       ref="editor"
       :initial-options="options"
-      mode="settings"
-      :show-header="false"
       @ready="onReady"
       @change="onChange"
       @error="onError"
@@ -31,16 +29,16 @@
   </div>
 </template>
 <script>
-import AcrylicEditor from "../components/AcrylicEditor";
-import AppHeader from "../components/AppHeader.vue";
-import BoardLayoutEditor from "../components/BoardLayoutEditor.vue";
+import AcrylicEditor from "../settings/AcrylicEditor";
+import AppHeader from "../settings/AppHeader.vue";
+import BoardLayoutEditor from "../settings/BoardLayoutEditor.vue";
 import {
   planStore,
   planBoardsOrLayoutDefault,
   assemblePlan,
   readPlanCache,
   migrateLegacyBoard,
-} from "../planStore.js";
+} from "../settings/planStore.js";
 
 export default {
   name: "SettingsPage",

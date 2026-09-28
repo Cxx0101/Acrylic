@@ -33,12 +33,10 @@
       :src="artwork"
       :initial-options="options"
       mode="preview"
-      :show-header="false"
       :preview-replace="true"
       defer-artwork-upload
       @ready="onReady"
       @change="onChange"
-      @export="onExport"
       @error="onError"
       @upload="applyPatternFile"
       ><DesignWorkspace
@@ -94,9 +92,9 @@
   </div>
 </template>
 <script>
-import AcrylicEditor from "../components/AcrylicEditor";
-import AppHeader from "../components/AppHeader.vue";
-import DesignWorkspace from "../components/DesignWorkspace.vue";
+import AcrylicEditor from "../home/AcrylicEditor";
+import AppHeader from "../home/AppHeader.vue";
+import DesignWorkspace from "../home/DesignWorkspace.vue";
 import {
   planStore,
   boardTag,
@@ -107,7 +105,7 @@ import {
   readPlanCache,
   migrateLegacyBoard,
   SPEC_DEFAULT_SIZE,
-} from "../planStore.js";
+} from "../home/planStore.js";
 
 export default {
   name: "PreviewPage",
@@ -285,9 +283,6 @@ export default {
       if (JSON.stringify(planStore.sharedOptions) === JSON.stringify(options))
         return;
       planStore.sharedOptions = options;
-    },
-    onExport({ blob, filename }) {
-      console.log("已导出", filename, blob.size);
     },
     onError(error) {
       console.error(error);

@@ -27,7 +27,9 @@
         :ref="'designer-' + board.id"
         :cutline-svg="board.cutlineSvg"
         :source-size="board.sourceSize || {}"
-        :spec-size="Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE"
+        :spec-size="
+          Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE
+        "
         :dpi="dpi"
         :can-apply="Boolean(canApplyMap[board.id])"
         @apply-design="onApplyDesign()"
@@ -44,7 +46,9 @@
         :cut-line="cutLine"
         :dpi="dpi"
         :component-size="componentSize"
-        :spec-size="Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE"
+        :spec-size="
+          Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE
+        "
         :interface-tab-enabled="interfaceTabEnabled"
         :interface-guide-width-setting="interfaceGuideWidth"
         :interface-guide-height-setting="interfaceGuideHeight"
@@ -62,7 +66,7 @@
 <script>
 import PatternDesigner from "./PatternDesigner/PatternDesigner.vue";
 import SvgCutlineDesigner from "./SvgCutlineDesigner.vue";
-import { SPEC_DEFAULT_SIZE } from "../planStore.js";
+import { SPEC_DEFAULT_SIZE } from "./planStore.js";
 
 export default {
   name: "DesignWorkspace",

@@ -6,56 +6,56 @@
       <slot></slot>
       <div class="pillow-demo">
         <div class="actions">
-        <div class="face-switch" role="group" aria-label="图案面切换">
+          <div class="face-switch" role="group" aria-label="图案面切换">
+            <button
+              type="button"
+              :class="{ active: activeFace === 'front' }"
+              :disabled="processing || !imageObject"
+              @click="switchFace('front')"
+            >
+              正面
+            </button>
+            <button
+              type="button"
+              :class="{ active: activeFace === 'back' }"
+              :disabled="processing || !imageObject"
+              @click="switchFace('back')"
+            >
+              反面
+            </button>
+          </div>
           <button
+            v-if="readyToDesign && imageObject && !isComplete"
             type="button"
-            :class="{ active: activeFace === 'front' }"
-            :disabled="processing || !imageObject"
-            @click="switchFace('front')"
+            class="svg-btn svg-btn--primary"
+            @click="finishDesign"
           >
-            正面
+            确定组件
+          </button>
+          <button
+            v-if="isComplete"
+            type="button"
+            class="svg-btn"
+            @click="reopenDesign"
+          >
+            重新编辑
           </button>
           <button
             type="button"
-            :class="{ active: activeFace === 'back' }"
-            :disabled="processing || !imageObject"
-            @click="switchFace('back')"
+            class="svg-btn"
+            :disabled="!imageObject || isComplete || processing"
+            @click="resetImagePosition"
           >
-            反面
+            重置组件
           </button>
-        </div>
-        <button
-          v-if="readyToDesign && imageObject && !isComplete"
-          type="button"
-          class="svg-btn svg-btn--primary"
-          @click="finishDesign"
-        >
-          确定组件
-        </button>
-        <button
-          v-if="isComplete"
-          type="button"
-          class="svg-btn"
-          @click="reopenDesign"
-        >
-          重新编辑
-        </button>
-        <button
-          type="button"
-          class="svg-btn"
-          :disabled="!imageObject || isComplete || processing"
-          @click="resetImagePosition"
-        >
-          重置组件
-        </button>
-        <button
-          type="button"
-          class="svg-btn"
-          :disabled="!artworkBlob || processing"
-          @click="downloadImages"
-        >
-          下载图片
-        </button>
+          <button
+            type="button"
+            class="svg-btn"
+            :disabled="!artworkBlob || processing"
+            @click="downloadImages"
+          >
+            下载图片
+          </button>
         </div>
       </div>
     </div>
@@ -168,7 +168,10 @@ export default {
     },
     widthLabel() {
       if (this.physicalSize) {
-        return this.formatDimension(this.physicalSize.width, this.physicalSize.unit);
+        return this.formatDimension(
+          this.physicalSize.width,
+          this.physicalSize.unit,
+        );
       }
       return this.formatDimension(
         this.sourceSize.width,
@@ -177,7 +180,10 @@ export default {
     },
     heightLabel() {
       if (this.physicalSize) {
-        return this.formatDimension(this.physicalSize.height, this.physicalSize.unit);
+        return this.formatDimension(
+          this.physicalSize.height,
+          this.physicalSize.unit,
+        );
       }
       return this.formatDimension(
         this.sourceSize.height,

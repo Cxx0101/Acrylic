@@ -1,0 +1,781 @@
+.acrylic-editor {
+    font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #252c30;
+    background: #f2f3f3;
+    font-synthesis: none;
+    font-size: 16px
+}
+
+* {
+    box-sizing: border-box
+}
+
+button,
+input,
+select {
+    font: inherit
+}
+
+button {
+    cursor: pointer
+}
+
+button:disabled {
+    opacity: .5;
+    cursor: wait
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 3px solid #f1b45b;
+    outline-offset: 3px
+}
+
+header {
+    height: 88px;
+    background: white;
+    border-bottom: 1px solid #e4e6e5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 36px;
+    gap: 20px
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
+    font-weight: 700;
+    font-size: 24px;
+    letter-spacing: 2px
+}
+
+.brand small {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #7d8689;
+    margin-top: 4px
+}
+
+.logo {
+    background: #233e3e;
+    color: white;
+    width: 43px;
+    height: 47px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px 13px 13px 3px;
+    font-size: 25px
+}
+
+.header-note {
+    font-size: 14px;
+    color: #727b7e
+}
+
+.primary {
+    background: #254b47;
+    color: white;
+    border: 0;
+    border-radius: 9px;
+    padding: 13px 22px;
+    font-weight: 600;
+    font-size: 14px
+}
+
+.primary:hover {
+    background: #173b37
+}
+
+main {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    /* max-width: 1500px; */
+    margin: auto;
+    min-height: 600px
+}
+
+aside {
+    background: white;
+    border-right: 1px solid #e4e6e5;
+    padding: 27px 25px
+}
+
+section {
+    padding: 27px 0;
+    border-bottom: 1px solid #eef0ee
+}
+
+section:last-child {
+    border: 0
+}
+
+h2 {
+    font-size: 15px;
+    margin: 0 0 17px;
+    font-weight: 600
+}
+
+section h2 span {
+    font-size: 12px;
+    color: #9aa5a6;
+    margin-right: 12px;
+    font-weight: 500;
+    letter-spacing: 1px
+}
+
+.hidden {
+    display: none
+}
+
+.upload {
+    background: #f8faf9;
+    border: 1px dashed #c7d2cd;
+    border-radius: 10px;
+    width: 100%;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: #344b46
+}
+
+.upload:hover {
+    background: #f0f5f2
+}
+
+.upload-icon {
+    font-size: 25px;
+    line-height: 1
+}
+
+.upload strong {
+    font-size: 14px
+}
+
+.upload small {
+    font-size: 12px;
+    color: #87918c
+}
+
+.file-info {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    margin-top: 12px;
+    color: #818b88
+}
+
+.file-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 155px
+}
+
+.materials {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 9px
+}
+
+.material {
+    position: relative;
+    border: 1px solid #e5e9e6;
+    border-radius: 8px;
+    background: white;
+    padding: 10px 4px;
+    font-size: 12px;
+    color: #66726f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px
+}
+
+.material.active {
+    border: 1.5px solid #366052;
+    background: #f3f7f3;
+    color: #284f43
+}
+
+.material b {
+    position: absolute;
+    right: 5px;
+    top: 3px;
+    font-size: 10px
+}
+
+.material i {
+    display: block;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    border: 1px solid #d3dcd7;
+    transform: rotate(-8deg);
+    box-shadow: 2px 3px 4px #0000000b
+}
+
+.clear {
+    background: linear-gradient(130deg, #fff9, #ccd9d744, #fff)
+}
+
+.glitter {
+    background: #f4eedf url('./assets/glitter.png') center/110px
+}
+
+.frost {
+    background: linear-gradient(135deg, #e4eae5, #fff)
+}
+
+.tinted {
+    background: linear-gradient(135deg, #ddd2f4, #ad9bd6)
+}
+
+.pearl {
+    background: linear-gradient(130deg, #f3dcec, #daedec, #f4e7ce)
+}
+
+.range-label {
+    display: block;
+    font-size: 14px;
+    margin-top: 20px;
+    color: #596660
+}
+
+.range-label output {
+    float: right;
+    color: #8a9590;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums
+}
+
+input[type=range] {
+    display: block;
+    width: 100%;
+    margin: 13px 0 0;
+    accent-color: #315b4b;
+    height: 5px;
+    cursor: pointer
+}
+
+.toggle-label,
+.color-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-top: 20px;
+    color: #596660
+}
+
+input[type=checkbox] {
+    accent-color: #315b4b;
+    width: 18px;
+    height: 18px
+}
+
+.workspace {
+    padding: 30px 48px 25px;
+    max-width: 1050px;
+    width: 100%;
+    margin: 0 auto
+}
+
+.workspace h2 {
+    font-size: 21px;
+    letter-spacing: .5px;
+    margin: 7px 0 0;
+    font-weight: 500
+}
+
+.canvas-wrap {
+    position: relative;
+    background-color: #fff;
+    background-image: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 35px #293c3510;
+    max-width: 670px;
+    margin: auto;
+    line-height: 0
+}
+
+canvas {
+    width: 100%;
+    height: auto;
+    touch-action: none
+}
+
+.loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #eef1ed;
+    line-height: 1.5;
+    color: #607368
+}
+
+.error {
+    color: #b43d32;
+    font-size: 13px;
+    line-height: 1.6
+}
+
+.toast {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #244b3e;
+    color: white;
+    padding: 13px 25px;
+    border-radius: 9px;
+    box-shadow: 0 8px 30px #0002;
+    font-size: 14px
+}
+
+@media(min-width:1500px) {
+    .workspace {
+        padding-top: 35px
+    }
+
+    .canvas-wrap {
+        max-width: 700px
+    }
+}
+
+@media(max-width:1000px) {
+    main {
+        grid-template-columns: 300px minmax(0, 1fr)
+    }
+
+    aside {
+        padding: 25px 20px
+    }
+
+    .workspace {
+        padding: 25px
+    }
+
+    .header-note {
+        display: none
+    }
+
+    .workspace h2 {
+        font-size: 18px
+    }
+}
+
+@media(max-width:700px) {
+    header {
+        height: 73px;
+        padding: 0 16px
+    }
+
+    .brand {
+        font-size: 20px
+    }
+
+    .primary {
+        padding: 12px;
+        font-size: 12px
+    }
+
+    .brand small {
+        font-size: 8px
+    }
+
+    main {
+        display: flex;
+        flex-direction: column
+    }
+
+    .workspace {
+        order: -1;
+        padding: 22px 16px 10px
+    }
+
+    .workspace h2 {
+        font-size: 18px
+    }
+
+    aside {
+        border-right: 0;
+        border-top: 1px solid #e1e6e1;
+        padding: 24px 20px
+    }
+
+    .materials {
+        grid-template-columns: repeat(5, 1fr)
+    }
+
+    .canvas-wrap {
+        max-width: 470px
+    }
+
+    .upload {
+        padding: 14px
+    }
+}
+
+.canvas-wrap canvas {
+    transition: transform .2s ease
+}
+
+@media(prefers-reduced-motion:reduce) {
+    .canvas-wrap canvas {
+        transition: none
+    }
+}
+
+/* Preview is a design-first workspace: parameters, editable artboard, then product mockup. */
+.editor-preview {
+    grid-template-columns: 300px minmax(620px, 1fr) 460px;
+    grid-template-rows: auto auto 1fr;
+    max-width: none;
+    align-items: start
+}
+
+.editor-preview aside {
+    grid-row: 1 / 4;
+    grid-column: 1;
+    padding: 25px 20px
+}
+
+.editor-preview .workspace {
+    grid-row: 2;
+    grid-column: 3;
+    position: relative;
+    max-width: none;
+    padding: 28px 18px 24px;
+    margin: 0
+}
+
+/* 有效果图方案时右列交给 pd-side-stack，mockup 预览区整体让位（canvas 仍在 DOM） */
+.editor-preview .workspace.vacant {
+    display: none
+}
+
+.editor-preview .workspace h2 {
+    font-size: 18px
+}
+
+.editor-preview .canvas-wrap {
+    max-width: 360px;
+    border-radius: 10px
+}
+
+/* 走马灯替换 mockup 预览：只隐藏画布，不销毁（exportImage 仍需它） */
+.canvas-wrap--replaced {
+    display: none
+}
+
+@media(max-width:1350px) {
+    .editor-preview {
+        grid-template-columns: 285px minmax(500px, 1fr) 390px
+    }
+
+    .editor-preview .workspace {
+        max-width: 390px;
+        padding: 24px 14px
+    }
+
+    .editor-preview .canvas-wrap {
+        max-width: 360px
+    }
+
+    .editor-preview .design-canvas {
+        padding: 24px 18px
+    }
+}
+
+@media(max-width:1050px) {
+    .editor-preview {
+        grid-template-columns: 280px minmax(0, 1fr)
+    }
+
+    .editor-preview .workspace {
+        position: static;
+        max-width: 100%;
+        border-top: 1px solid #e4e6e5
+    }
+
+    .editor-preview .canvas-wrap {
+        max-width: 420px
+    }
+}
+
+@media(max-width:700px) {
+    .editor-preview .design-canvas {
+        padding: 16px
+    }
+
+    .editor-preview .workspace {
+        padding: 22px 16px
+    }
+
+    .editor-preview .canvas-wrap {
+        max-width: 470px
+    }
+}
+
+.acrylic-editor {
+    position: relative;
+    width: 100%;
+    isolation: isolate
+}
+
+.acrylic-editor header {
+    flex-wrap: wrap;
+    min-height: 88px;
+    height: auto;
+    padding-top: 12px;
+    padding-bottom: 12px
+}
+
+.acrylic-editor button {
+    line-height: normal
+}
+
+.acrylic-editor main {
+    width: 100%
+}
+
+.advanced {
+    margin-top: 18px;
+    border-top: 1px dashed #dce4df;
+    padding-top: 12px
+}
+
+.advanced summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #52665d;
+    user-select: none
+}
+
+.advanced[open] summary {
+    margin-bottom: 4px
+}
+
+.select-label select {
+    min-width: 0;
+    border: 1px solid #d7dfda;
+    border-radius: 7px;
+    padding: 9px;
+    background: #fff;
+    color: #3f5148
+}
+
+.preset-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px
+}
+
+.preset-list span {
+    display: flex
+}
+
+.preset-list button {
+    border: 1px solid #d5ddd8;
+    background: #fff;
+    color: #52635a;
+    padding: 6px 8px;
+    font-size: 12px
+}
+
+.preset-list button:first-child {
+    border-radius: 12px 0 0 12px
+}
+
+.preset-list button:last-child {
+    border-left: 0;
+    border-radius: 0 12px 12px 0
+}
+
+.select-label {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 12px;
+    color: #596660;
+    font-size: 14px
+}
+
+.asset-grid {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0
+}
+
+.asset-grid label {
+    position: relative;
+    overflow: hidden;
+    border: 1px dashed #bdcbc3;
+    border-radius: 7px;
+    padding: 9px;
+    text-align: center;
+    color: #52665d;
+    font-size: 12px;
+    cursor: pointer
+}
+
+.asset-grid input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer
+}
+
+.number-setting {
+    display: grid;
+    gap: 7px;
+    margin-top: 14px;
+    color: #596660;
+    font-size: 14px
+}
+
+.number-setting input {
+    width: 100%;
+    border: 1px solid #d7dfda;
+    border-radius: 7px;
+    padding: 9px;
+    background: #fff;
+    color: #3f5148
+}
+
+.number-setting-toggle {
+    display: flex;
+    margin-top: 18px
+}
+
+.editor-preview aside {
+    align-self: start
+}
+
+.editor-preview .workspace {
+    position: sticky;
+    top: 95px
+}
+
+.editor-settings .workspace {
+    align-self: start;
+    position: sticky;
+    top: 95px
+}
+
+/* 设置页：canvas-wrap 现在包含图片下方的工具栏区，棋盘格底纹只该出现在图片区域外不可见，统一改纯白 */
+.editor-settings .canvas-wrap {
+    background-color: #fff;
+    background-image: none
+}
+
+.spec-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px
+}
+
+.spec-options button {
+    border: 1px solid #d8dfdb;
+    border-radius: 9px;
+    background: #fff;
+    color: #617069;
+    font-size: 13px;
+    padding: 12px 8px;
+    text-align: center
+}
+
+.spec-options button.active {
+    border: 2px solid #3e695b;
+    background: #f1f6f3;
+    color: #2d5548;
+    font-weight: 600
+}
+
+.hook-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px
+}
+
+.hook-options button,
+.hook-options label {
+    min-width: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 82px;
+    border: 1px solid #d8dfdb;
+    border-radius: 9px;
+    background: #fff;
+    color: #617069;
+    font-size: 11px;
+    text-align: center;
+    padding: 8px;
+    overflow: hidden;
+    cursor: pointer
+}
+
+.hook-options .active {
+    border: 2px solid #3e695b;
+    background: #f1f6f3;
+    color: #2d5548
+}
+
+.hook-options input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer
+}
+
+.hook-thumb,
+.hook-preset {
+    width: 27px;
+    height: 44px;
+    background: url('./assets/hook.png') center/contain no-repeat
+}
+
+.hook-preset {
+    background-position: center;
+    background-size: contain;
+    background-repeat: no-repeat
+}
+
+.hook-none,
+.hook-upload {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #edf1ee;
+    color: #738079;
+    font-size: 20px;
+    font-style: normal
+}
+
+.hook-options span {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis
+}

@@ -365,19 +365,19 @@ async function runPillowEngine(file, options, jobId, rawImage = null, onProgress
 
     postProgress(jobId, 10, '解码图片');
     if (rawImage) {
-      W = rawImage.width;
-      H = rawImage.height;
-      data = new Uint8ClampedArray(rawImage.data);
-      ch = 4;
+        W = rawImage.width;
+        H = rawImage.height;
+        data = new Uint8ClampedArray(rawImage.data);
+        ch = 4;
         if (!W || !H || data.length !== W * H * ch) {
-        throw new Error('invalid raw RGBA image');
-      }
-      if (rawImage.artworkData != null) {
-        rawArtworkData = new Uint8ClampedArray(rawImage.artworkData);
-        if (rawArtworkData.length !== W * H * ch) {
-          throw new Error('invalid raw artwork RGBA image');
+            throw new Error('invalid raw RGBA image');
         }
-      }
+        if (rawImage.artworkData != null) {
+            rawArtworkData = new Uint8ClampedArray(rawImage.artworkData);
+            if (rawArtworkData.length !== W * H * ch) {
+                throw new Error('invalid raw artwork RGBA image');
+            }
+        }
     } else {
         // 超大上传图先缩到 maxSide 以内，降低后续 O(pixelCount) 计算与编码量。
         const maxSide = Number.isFinite(Number(opt.maxSide))
@@ -879,7 +879,7 @@ async function runPillowEngine(file, options, jobId, rawImage = null, onProgress
             const isInnerInsetWhite =
                 isInsetInnerHolePixel(i) &&
                 Math.sqrt(innerHoleDistance[i]) <=
-                    Math.max(0, -innerHoleWhiteBorder - cutLine);
+                Math.max(0, -innerHoleWhiteBorder - cutLine);
             if (isInsetWhiteBorderPixel(i) || isInnerInsetWhite) {
                 out[o] = 255;
                 out[o + 1] = 255;

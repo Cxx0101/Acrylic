@@ -33,9 +33,7 @@
 
     <!-- 工具栏在图片（canvas）正下方的文档流中，不再悬浮在效果图上 -->
     <div class="board-toolbar" @pointerdown.stop>
-      <button type="button" class="board-tool" @click="addBoard">
-        + 板块
-      </button>
+      <button type="button" class="board-tool" @click="addBoard">+ 板块</button>
       <button
         type="button"
         class="board-tool"
@@ -66,7 +64,8 @@
       <template v-if="selected">
         <label class="board-prop">
           名称<input
-            type="text" style="width: 120px;"
+            type="text"
+            style="width: 120px"
             :value="selected.name"
             @change="setName($event.target.value)"
           />

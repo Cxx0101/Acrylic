@@ -1,230 +1,233 @@
 <template>
-  <div :class="{ embedded }" style="display: flex; margin: 0 auto; padding: 20px">
+  <div
+    :class="{ embedded }"
+    style="display: flex; margin: 0 auto; padding: 20px"
+  >
     <div style="width: 60%; margin-right: 20px">
       <!-- 右侧竖排容器：默认 display:contents 不影响原布局；
            预览页覆盖为真实卡片，内含（slot 传入的）效果图走马灯 + 组件设置面板 -->
       <div class="pd-side-stack">
         <slot></slot>
         <div class="pillow-demo">
-        <div v-if="!embedded" class="row">
-          <label class="file-upload">
-            <input
-              class="file-upload-input"
-              type="file"
-              accept="image/png"
-              @change="handleFileChange"
-            />
-            <span class="file-upload-button">上传 PNG</span>
-            <span class="file-upload-name">
-              {{ file ? file.name : "请选择透明背景 PNG 图片" }}
-            </span>
-          </label>
-        </div>
+          <div v-if="!embedded" class="row">
+            <label class="file-upload">
+              <input
+                class="file-upload-input"
+                type="file"
+                accept="image/png"
+                @change="handleFileChange"
+              />
+              <span class="file-upload-button">上传 PNG</span>
+              <span class="file-upload-name">
+                {{ file ? file.name : "请选择透明背景 PNG 图片" }}
+              </span>
+            </label>
+          </div>
 
-        <div class="form-grid">
-          <label v-if="!embedded">
-            尺寸(cm)
-            <input
-              v-model.number="maximumSizeCm"
-              type="number"
-              min="0.1"
-              step="0.1"
-              :disabled="!fabricCanvas || processing"
-              @change="applyPhysicalSize"
-            />
-          </label>
+          <div class="form-grid">
+            <label v-if="!embedded">
+              尺寸(cm)
+              <input
+                v-model.number="maximumSizeCm"
+                type="number"
+                min="0.1"
+                step="0.1"
+                :disabled="!fabricCanvas || processing"
+                @change="applyPhysicalSize"
+              />
+            </label>
 
-          <label>
-            内轮廓白边(px)
-            <input
-              v-model.number="form.innerHoleWhiteBorder"
-              type="number"
-              :disabled="processing || !form.includeInnerHoles"
-              @input="schedulePreviewRegeneration"
-            />
-          </label>
-        </div>
-        <div>
-          <label class="toggle-label">
-            <input
-              v-model="form.includeInnerHoles"
-              type="checkbox"
-              :disabled="processing"
-              @change="schedulePreviewRegeneration"
-            />
-            内部镂空
-          </label>
-        </div>
-        <div
-          v-show="activeFace === 'front'"
-          style="
-            margin-top: 20px;
-            display: flex;
-            justify-content: space-between;
-          "
-        >
-          <div style="font-weight: bold">组件设置</div>
-          <label class="toggle-label">
-            <input
-              v-model="enableEdgeSticker"
-              type="checkbox"
-              :disabled="processing || !contentBlob"
-              @change="toggleEdgeSticker"
-            />
-            启用组件
-          </label>
-        </div>
+            <label>
+              内轮廓白边(px)
+              <input
+                v-model.number="form.innerHoleWhiteBorder"
+                type="number"
+                :disabled="processing || !form.includeInnerHoles"
+                @input="schedulePreviewRegeneration"
+              />
+            </label>
+          </div>
+          <div>
+            <label class="toggle-label">
+              <input
+                v-model="form.includeInnerHoles"
+                type="checkbox"
+                :disabled="processing"
+                @change="schedulePreviewRegeneration"
+              />
+              内部镂空
+            </label>
+          </div>
+          <div
+            v-show="activeFace === 'front'"
+            style="
+              margin-top: 20px;
+              display: flex;
+              justify-content: space-between;
+            "
+          >
+            <div style="font-weight: bold">组件设置</div>
+            <label class="toggle-label">
+              <input
+                v-model="enableEdgeSticker"
+                type="checkbox"
+                :disabled="processing || !contentBlob"
+                @change="toggleEdgeSticker"
+              />
+              启用组件
+            </label>
+          </div>
 
-        <div
-          v-show="activeFace === 'front'"
-          class="form-grid"
-          style="margin-top: 10px"
-        >
-          <label class="sticker-pattern-field">
-            <span>组件图案</span>
-            <span
-              class="sticker-pattern-buttons"
-              role="radiogroup"
-              aria-label="组件图案"
-            >
+          <div
+            v-show="activeFace === 'front'"
+            class="form-grid"
+            style="margin-top: 10px"
+          >
+            <label class="sticker-pattern-field">
+              <span>组件图案</span>
+              <span
+                class="sticker-pattern-buttons"
+                role="radiogroup"
+                aria-label="组件图案"
+              >
+                <button
+                  type="button"
+                  :class="{ active: stickerPattern === 'ring' }"
+                  :aria-checked="stickerPattern === 'ring'"
+                  :disabled="processing || !enableEdgeSticker"
+                  role="radio"
+                  @click="selectStickerPattern('ring')"
+                >
+                  <svg
+                    t="1787904690542"
+                    class="icon"
+                    viewBox="0 0 1024 1024"
+                    version="1.1"
+                    xmlns="http://www.w3.org/2000/svg"
+                    p-id="1708"
+                    width="48"
+                    height="48"
+                  >
+                    <path
+                      d="M512 44.8C252.8 44.8 44.8 256 44.8 512S252.8 979.2 512 979.2 976 768 976 512 768 44.8 512 44.8z m0 870.4C288 915.2 108.8 732.8 108.8 512S288 108.8 512 108.8C732.8 108.8 915.2 288 915.2 512S732.8 915.2 512 915.2z"
+                      fill="#1296db"
+                      p-id="1709"
+                    ></path>
+                    <path
+                      d="M512 236.8c-150.4 0-272 124.8-272 278.4 0 153.6 121.6 278.4 272 278.4s272-124.8 272-278.4c0-153.6-121.6-278.4-272-278.4z m0 496c-115.2 0-208-96-208-214.4s92.8-214.4 208-214.4 208 96 208 214.4-92.8 214.4-208 214.4z"
+                      fill="#1296db"
+                      p-id="1710"
+                    ></path>
+                  </svg>
+                  <span>图案一</span>
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: stickerPattern === 'square' }"
+                  :aria-checked="stickerPattern === 'square'"
+                  :disabled="processing || !enableEdgeSticker"
+                  role="radio"
+                  @click="selectStickerPattern('square')"
+                >
+                  <svg
+                    width="64"
+                    height="64"
+                    viewBox="0 0 64 64"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <!-- 外框 -->
+                    <path
+                      d="M4 62 V32 A28 28 0 0 1 60 32 V62 H4 Z"
+                      fill="none"
+                      stroke="#1296DB"
+                      stroke-width="6"
+                    />
+
+                    <!-- 内部圆环 -->
+                    <circle
+                      cx="32"
+                      cy="28"
+                      r="11"
+                      fill="none"
+                      stroke="#1296DB"
+                      stroke-width="4"
+                    />
+                  </svg>
+                  <span>图案二</span>
+                </button>
+              </span>
+            </label>
+          </div>
+
+          <div class="actions">
+            <div class="face-switch" role="group" aria-label="图案面切换">
               <button
                 type="button"
-                :class="{ active: stickerPattern === 'ring' }"
-                :aria-checked="stickerPattern === 'ring'"
-                :disabled="processing || !enableEdgeSticker"
-                role="radio"
-                @click="selectStickerPattern('ring')"
+                :class="{ active: activeFace === 'front' }"
+                :disabled="
+                  processing || !fabricCanvas || !fabricCanvas.backgroundImage
+                "
+                @click="switchFace('front')"
               >
-                <svg
-                  t="1787904690542"
-                  class="icon"
-                  viewBox="0 0 1024 1024"
-                  version="1.1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  p-id="1708"
-                  width="48"
-                  height="48"
-                >
-                  <path
-                    d="M512 44.8C252.8 44.8 44.8 256 44.8 512S252.8 979.2 512 979.2 976 768 976 512 768 44.8 512 44.8z m0 870.4C288 915.2 108.8 732.8 108.8 512S288 108.8 512 108.8C732.8 108.8 915.2 288 915.2 512S732.8 915.2 512 915.2z"
-                    fill="#1296db"
-                    p-id="1709"
-                  ></path>
-                  <path
-                    d="M512 236.8c-150.4 0-272 124.8-272 278.4 0 153.6 121.6 278.4 272 278.4s272-124.8 272-278.4c0-153.6-121.6-278.4-272-278.4z m0 496c-115.2 0-208-96-208-214.4s92.8-214.4 208-214.4 208 96 208 214.4-92.8 214.4-208 214.4z"
-                    fill="#1296db"
-                    p-id="1710"
-                  ></path>
-                </svg>
-                <span>图案一</span>
+                正面
               </button>
               <button
                 type="button"
-                :class="{ active: stickerPattern === 'square' }"
-                :aria-checked="stickerPattern === 'square'"
-                :disabled="processing || !enableEdgeSticker"
-                role="radio"
-                @click="selectStickerPattern('square')"
+                :class="{ active: activeFace === 'back' }"
+                :disabled="
+                  processing || !fabricCanvas || !fabricCanvas.backgroundImage
+                "
+                @click="switchFace('back')"
               >
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 64 64"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <!-- 外框 -->
-                  <path
-                    d="M4 62 V32 A28 28 0 0 1 60 32 V62 H4 Z"
-                    fill="none"
-                    stroke="#1296DB"
-                    stroke-width="6"
-                  />
-
-                  <!-- 内部圆环 -->
-                  <circle
-                    cx="32"
-                    cy="28"
-                    r="11"
-                    fill="none"
-                    stroke="#1296DB"
-                    stroke-width="4"
-                  />
-                </svg>
-                <span>图案二</span>
+                反面
               </button>
-            </span>
-          </label>
-        </div>
-
-        <div class="actions">
-          <div class="face-switch" role="group" aria-label="图案面切换">
+            </div>
             <button
-              type="button"
-              :class="{ active: activeFace === 'front' }"
-              :disabled="
-                processing || !fabricCanvas || !fabricCanvas.backgroundImage
-              "
-              @click="switchFace('front')"
+              v-if="false"
+              :disabled="!file || processing"
+              @click="generate"
             >
-              正面
+              {{ processing ? "处理中..." : "生成" }}
             </button>
             <button
-              type="button"
-              :class="{ active: activeFace === 'back' }"
+              class="primary-action"
               :disabled="
-                processing || !fabricCanvas || !fabricCanvas.backgroundImage
+                activeFace !== 'front' ||
+                (!edgeSticker && !interfaceTab) ||
+                processing ||
+                !contentBlob
               "
-              @click="switchFace('back')"
+              @click="mergeStickerIntoContour"
             >
-              反面
+              确定组件
+            </button>
+            <button
+              class="secondary-action"
+              :disabled="activeFace !== 'front' || !preMergeState || processing"
+              @click="resetEdgeSticker"
+            >
+              重置组件
+            </button>
+            <button
+              class="secondary-action"
+              :disabled="!finish"
+              @click="downloadImages"
+            >
+              下载图片
             </button>
           </div>
-          <button
-            v-if="false"
-            :disabled="!file || processing"
-            @click="generate"
-          >
-            {{ processing ? "处理中..." : "生成" }}
-          </button>
-          <button
-            class="primary-action"
-            :disabled="
-              activeFace !== 'front' ||
-              (!edgeSticker && !interfaceTab) ||
-              processing ||
-              !contentBlob
-            "
-            @click="mergeStickerIntoContour"
-          >
-            确定组件
-          </button>
-          <button
-            class="secondary-action"
-            :disabled="activeFace !== 'front' || !preMergeState || processing"
-            @click="resetEdgeSticker"
-          >
-            重置组件
-          </button>
-          <button
-            class="secondary-action"
-            :disabled="!finish"
-            @click="downloadImages"
-          >
-            下载图片
-          </button>
-        </div>
-        <div v-if="interfaceTab" class="interface-hint">
-          拖动蓝色矩形可调整底部插口位置
-        </div>
+          <div v-if="interfaceTab" class="interface-hint">
+            拖动蓝色矩形可调整底部插口位置
+          </div>
 
-        <div v-if="processing || progress > 0" class="progress-wrap">
-          <div class="progress-text">{{ progress }}% · {{ stage }}</div>
-          <progress :value="progress" max="100"></progress>
+          <div v-if="processing || progress > 0" class="progress-wrap">
+            <div class="progress-text">{{ progress }}% · {{ stage }}</div>
+            <progress :value="progress" max="100"></progress>
+          </div>
+          <div v-if="error" class="error" role="alert">
+            {{ error }}
+          </div>
         </div>
-        <div v-if="error" class="error" role="alert">
-          {{ error }}
-        </div>
-      </div>
       </div>
     </div>
     <div class="canvas-panel">
@@ -422,7 +425,9 @@ export default {
     },
     componentSize(value) {
       const next = Number(value);
-      this.stickerSize = Number.isFinite(next) ? Math.max(1, Math.round(next)) : 50;
+      this.stickerSize = Number.isFinite(next)
+        ? Math.max(1, Math.round(next))
+        : 50;
       if (this.edgeSticker && !this.processing) this.applyStickerSize();
     },
     specSize(value) {
@@ -700,7 +705,8 @@ export default {
           face === "back" && this.faceAssets.front
             ? this.faceAssets.front.contourLayout
             : targetAsset.contourLayout;
-        if (!layoutAsset.previewLayout) this.alignCanvasContourTo(contourLayout);
+        if (!layoutAsset.previewLayout)
+          this.alignCanvasContourTo(contourLayout);
         this.setAccessoryEditingState(face === "front");
         if (face === "front" && this.interfaceTab && this.interfaceGuide) {
           this.keepInterfaceTabAttached(this.interfaceTab);
@@ -1046,12 +1052,10 @@ export default {
           this.edgeSticker.intersectingStickerCenter = {
             x:
               canvasCenterX +
-              (this.edgeSticker.intersectingStickerCenter.x - centerX) *
-                factor,
+              (this.edgeSticker.intersectingStickerCenter.x - centerX) * factor,
             y:
               canvasCenterY +
-              (this.edgeSticker.intersectingStickerCenter.y - centerY) *
-                factor,
+              (this.edgeSticker.intersectingStickerCenter.y - centerY) * factor,
           };
         }
       }
@@ -1254,10 +1258,7 @@ export default {
       let outerHead = 0;
       let outerTail = 0;
       const enqueueOuterPixel = (index) => {
-        if (
-          outerData[index] ||
-          boundaryPixels[index * 4 + 3] < 16
-        ) {
+        if (outerData[index] || boundaryPixels[index * 4 + 3] < 16) {
           return;
         }
         outerData[index] = 255;
@@ -1297,7 +1298,8 @@ export default {
     getStickerMaskData(target, width, height, { fillInterior = true } = {}) {
       const maskWidth = Math.max(1, Math.ceil(width));
       const maskHeight = Math.max(1, Math.ceil(height));
-      const cacheKey = `${fillInterior ? "filled" : "outline"}:` +
+      const cacheKey =
+        `${fillInterior ? "filled" : "outline"}:` +
         `${maskWidth}x${maskHeight}`;
       const cache = target.outerMaskCache || {};
       if (cache[cacheKey]) return cache[cacheKey];
@@ -1371,7 +1373,10 @@ export default {
       );
       const overlapInset = Math.min(
         4,
-        Math.max(1, Math.min(target.getScaledWidth(), target.getScaledHeight()) * 0.06),
+        Math.max(
+          1,
+          Math.min(target.getScaledWidth(), target.getScaledHeight()) * 0.06,
+        ),
       );
       return {
         x: contourPoint.x + side * normalX * (distance - overlapInset),
@@ -1419,9 +1424,7 @@ export default {
             targetX < boundaryMask.width &&
             targetY >= 0 &&
             targetY < boundaryMask.height &&
-            boundaryMask.outerData[
-              targetY * boundaryMask.width + targetX
-            ] >= 32
+            boundaryMask.outerData[targetY * boundaryMask.width + targetX] >= 32
           ) {
             overlapPixels += 1;
           }
@@ -1662,9 +1665,7 @@ export default {
         this.fabricCanvas.remove(this.edgeSticker);
       }
 
-      const sticker = await this.loadFabricImage(
-        this.getStickerSvgUrl(),
-      );
+      const sticker = await this.loadFabricImage(this.getStickerSvgUrl());
       sticker.set({
         left: currentPosition ? currentPosition.left : this.snapContour[0].x,
         top: currentPosition ? currentPosition.top : this.snapContour[0].y,
@@ -1919,7 +1920,11 @@ export default {
     },
 
     async capFileToMaxSide(file, maxSide) {
-      if (!maxSide || maxSide <= 0 || typeof createImageBitmap === "undefined") {
+      if (
+        !maxSide ||
+        maxSide <= 0 ||
+        typeof createImageBitmap === "undefined"
+      ) {
         return file;
       }
       try {
@@ -2030,17 +2035,13 @@ export default {
       if (!background || !this.edgeSticker) return null;
       return {
         x:
-          (this.edgeSticker.left - background.left) /
-            (background.scaleX || 1) +
+          (this.edgeSticker.left - background.left) / (background.scaleX || 1) +
           offsetX,
         y:
-          (this.edgeSticker.top - background.top) /
-            (background.scaleY || 1) +
+          (this.edgeSticker.top - background.top) / (background.scaleY || 1) +
           offsetY,
-        width:
-          this.edgeSticker.getScaledWidth() / (background.scaleX || 1),
-        height:
-          this.edgeSticker.getScaledHeight() / (background.scaleY || 1),
+        width: this.edgeSticker.getScaledWidth() / (background.scaleX || 1),
+        height: this.edgeSticker.getScaledHeight() / (background.scaleY || 1),
         angle: this.edgeSticker.angle || 0,
       };
     },
@@ -2294,8 +2295,8 @@ export default {
         requestedSmoothing > 0
           ? Math.round(requestedSmoothing)
           : requestedWhiteBorder === 0
-            ? 0
-            : Math.max(32, Math.round(Math.min(width, height) * 0.06));
+          ? 0
+          : Math.max(32, Math.round(Math.min(width, height) * 0.06));
 
       // Worker distances are source pixels, while Fabric fits every output
       // into a 500px square. Solve the fit scale first, then convert the
@@ -2743,7 +2744,13 @@ export default {
       outputContext.globalCompositeOperation = "destination-out";
       outputContext.translate(x, y);
       outputContext.rotate(fabric.util.degreesToRadians(angle));
-      outputContext.drawImage(maskCanvas, -width / 2, -height / 2, width, height);
+      outputContext.drawImage(
+        maskCanvas,
+        -width / 2,
+        -height / 2,
+        width,
+        height,
+      );
       outputContext.restore();
 
       return new Promise((resolve, reject) => {
@@ -3058,11 +3065,7 @@ export default {
         : null;
     },
 
-    async findStickerDiameterConnections(
-      pathBlob,
-      position,
-      interiorMask,
-    ) {
+    async findStickerDiameterConnections(pathBlob, position, interiorMask) {
       const pathImage = await this.loadFabricImage(pathBlob);
       const path = pathImage.getElement
         ? pathImage.getElement()
@@ -3124,7 +3127,7 @@ export default {
             sampleY >= pathHeight ||
             interiorPixels[(sampleY * pathWidth + sampleX) * 4 + 3] < 32
           ) {
-              outerPoints.push(point);
+            outerPoints.push(point);
           }
           if (
             !isComponentPixel(x - 1, y) ||
@@ -3159,13 +3162,7 @@ export default {
         pathHeight - 1,
         Math.ceil(position.y + position.height / 2 + maxDistance),
       );
-      const contourPoints = this.getOuterContour(
-        pathImage,
-        0,
-        0,
-        1,
-        1,
-      ).filter(
+      const contourPoints = this.getOuterContour(pathImage, 0, 0, 1, 1).filter(
         (point) =>
           point.x >= minX &&
           point.x <= maxX &&
@@ -3208,8 +3205,7 @@ export default {
       });
       const centerConnection = smoothCandidates.reduce((nearest, candidate) => {
         const distanceSquared =
-          (position.x - candidate.x) ** 2 +
-          (position.y - candidate.y) ** 2;
+          (position.x - candidate.x) ** 2 + (position.y - candidate.y) ** 2;
         return !nearest || distanceSquared < nearest.distanceSquared
           ? { ...candidate, distanceSquared }
           : nearest;
@@ -3779,9 +3775,7 @@ export default {
       const position = this.getStickerSourcePosition(offsetX, offsetY);
       if (!position) throw new Error("组件位置尚未准备好");
 
-      if (
-        await this.isStickerOuterLoopInsideCutLine(position, { pathBlob })
-      ) {
+      if (await this.isStickerOuterLoopInsideCutLine(position, { pathBlob })) {
         // An almost entirely embedded component must not alter the product
         // outline. Keep the existing image die line and output only the
         // authored, disconnected inner SVG details.
@@ -4822,7 +4816,22 @@ export default {
   transition: transform 0.15s ease, background-color 0.2s ease,
     border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.canvas-panel-hint .apply-design-action{min-height:40px;padding:0 16px;border:0;border-radius:8px;color:#fff;font-size:14px;font-weight:600;background:#285348;box-shadow:0 4px 10px rgba(40,83,72,.2);cursor:pointer}.canvas-panel-hint .apply-design-action:disabled{opacity:.48;cursor:not-allowed}
+.canvas-panel-hint .apply-design-action {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  background: #285348;
+  box-shadow: 0 4px 10px rgba(40, 83, 72, 0.2);
+  cursor: pointer;
+}
+.canvas-panel-hint .apply-design-action:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
 
 .canvas-stage {
   position: relative;
@@ -4896,5 +4905,36 @@ progress {
   white-space: pre-wrap;
 }
 
-.embedded{display:grid!important;grid-template-columns:minmax(250px,310px) minmax(0,1fr)!important;gap:16px;padding:0!important}.embedded>div:first-child{width:auto!important;margin-right:0!important}.embedded .pillow-demo{padding:20px}.embedded .canvas-panel{width:auto;margin:0}.embedded .canvas-stage{min-height:650px;padding:24px}.embedded .canvas-panel-title{padding:0 16px}@media(max-width:900px){.embedded{grid-template-columns:1fr!important}.embedded .canvas-stage{min-height:500px}}
+.embedded {
+  display: grid !important;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr) !important;
+  gap: 16px;
+  padding: 0 !important;
+}
+.embedded > div:first-child {
+  width: auto !important;
+  margin-right: 0 !important;
+}
+.embedded .pillow-demo {
+  padding: 20px;
+}
+.embedded .canvas-panel {
+  width: auto;
+  margin: 0;
+}
+.embedded .canvas-stage {
+  min-height: 650px;
+  padding: 24px;
+}
+.embedded .canvas-panel-title {
+  padding: 0 16px;
+}
+@media (max-width: 900px) {
+  .embedded {
+    grid-template-columns: 1fr !important;
+  }
+  .embedded .canvas-stage {
+    min-height: 500px;
+  }
+}
 </style>

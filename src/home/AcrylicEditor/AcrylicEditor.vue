@@ -1,0 +1,979 @@
+<script>
+import {
+  loadImage,
+  prepareArt,
+  makeShape,
+  render,
+  composeScene,
+  holeOffsetsFromPoint,
+} from "./render";
+import { SPEC_SIZES, SPEC_DEFAULT_SIZE } from "../planStore.js";
+import backgroundUrl from "./assets/background.png";
+import hookUrl from "./assets/hook.png";
+import glitterUrl from "./assets/glitter.png";
+import reflectionUrl from "./assets/reflection.png";
+import redHookUrl from "./assets/redHook.png";
+import blueHookUrl from "./assets/blueHook.png";
+import greenHookUrl from "./assets/greenHook.png";
+import purpleHookUrl from "./assets/purpleHook.png";
+
+const DEFAULTS = {
+  border: 16,
+  smooth: 5,
+  cutLine: 4,
+  dpi: 300,
+  stickerSize: 50,
+  // 默认规格 = SPEC_SIZES[0]（5cm）。
+  specSize: SPEC_DEFAULT_SIZE,
+  interfaceTabEnabled: false,
+  interfaceGuideWidth: 300,
+  interfaceGuideHeight: 52,
+  interfaceTabWidth: 100,
+  interfaceTabHeight: 52,
+  material: "glitter",
+  density: 85,
+  shine: 55,
+  intensity: 80,
+  thickness: 4,
+  tint: "#8c68df",
+  baseColor: "#ffffff",
+  baseOpacity: 0,
+  textureScale: 100,
+  textureOpacity: 100,
+  holeX: 0,
+  holeY: 0,
+  holeShape: "ring",
+  hook: true,
+  background: "scene",
+  productX: 0,
+  productY: 0,
+  productScale: 100,
+  productRotation: 0,
+  shadowX: -7,
+  shadowY: 8,
+  shadowBlur: 5,
+  shadowOpacity: 20,
+};
+const MATERIALS = [
+  ["clear", "透明", "clear"],
+  ["glitter", "彩色亮片", "glitter"],
+  ["frost", "磨砂", "frost"],
+  ["tinted", "彩色透明", "tinted"],
+  ["pearl", "珠光", "pearl"],
+];
+const DEFAULT_HOOK_OPTIONS = [
+  { id: "orange", label: "橙色挂扣", type: "builtin", src: hookUrl },
+  { id: "blue", label: "蓝色挂扣", type: "builtin", src: blueHookUrl },
+  { id: "green", label: "绿色挂扣", type: "builtin", src: greenHookUrl },
+  { id: "purple", label: "紫色挂扣", type: "builtin", src: purpleHookUrl },
+  { id: "red", label: "红色挂扣", type: "builtin", src: redHookUrl },
+  { id: "none", label: "无挂扣", type: "none" },
+  { id: "custom", label: "自定义上传", type: "upload" },
+];
+const BUILTIN_HOOK_SOURCES = {
+  orange: hookUrl,
+  blue: blueHookUrl,
+  green: greenHookUrl,
+  purple: purpleHookUrl,
+  red: redHookUrl,
+};
+const BUILTIN = {
+  background: backgroundUrl,
+  hook: hookUrl,
+  glitter: glitterUrl,
+  reflection: reflectionUrl,
+  redHook: redHookUrl,
+  blueHook: blueHookUrl,
+  greenHook: greenHookUrl,
+  purpleHook: purpleHookUrl,
+};
+function imageToDataUrl(img, type = "image/png", quality = 0.92) {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  c.getContext("2d").drawImage(img, 0, 0);
+  return c.toDataURL(type, quality);
+}
+export default {
+  name: "AcrylicEditor",
+  props: {
+    // Empty src uses the supplied original artwork. Can be changed after mounting.
+    src: { type: String, default: "" },
+    assetUrls: { type: Object, default: () => ({}) },
+    initialOptions: { type: Object, default: () => ({}) },
+    crossOrigin: { type: String, default: "anonymous" },
+    mode: {
+      type: String,
+      default: "full",
+      validator: (value) => ["full", "preview"].includes(value),
+    },
+    deferArtworkUpload: { type: Boolean, default: false },
+    // 预览页用走马灯替换 mockup 预览时置 true：canvas-wrap 仅隐藏不销毁，
+    // exportImage / setBoards 渲染链不受影响。
+    previewReplace: { type: Boolean, default: false },
+    hookOptions: {
+      type: Array,
+      default: () =>
+        DEFAULT_HOOK_OPTIONS.map((item) => Object.assign({}, item)),
+    },
+  },
+  data() {
+    return {
+      ready: false,
+      busy: false,
+      error: "",
+      notice: "",
+      filename: "切图_05.png",
+      dimensions: "",
+      o: Object.assign({}, DEFAULTS),
+      materials: MATERIALS,
+      // 规格表共享自 planStore（含 scale 放大倍数），克隆防组件间串改。
+      specSizes: SPEC_SIZES.map((item) => Object.assign({}, item)),
+      scenePreset: "studio",
+      exportSize: 1500,
+      exportFormat: "png",
+      dragging: false,
+      hookName: "橙色挂扣",
+      selectedHookId: "orange",
+      // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
+      loadingConfig: false,
+    };
+  },
+  computed: {
+    isPreview() {
+      return this.mode === "preview";
+    },
+  },
+  watch: {
+    o: {
+      deep: true,
+      handler() {
+        this.scheduleRedraw();
+        this.$emit("change", Object.assign({}, this.o));
+      },
+    },
+    src() {
+      this.initialize();
+    },
+    assetUrls: {
+      deep: true,
+      handler() {
+        this.initialize();
+      },
+    },
+    crossOrigin() {
+      this.initialize();
+    },
+  },
+  created() {
+    // Keep Image/Canvas objects outside Vue 2's deep observation.
+    this.engine = {
+      assets: {},
+      builtinAssets: {},
+      assetOverrides: {},
+      assetData: { background: null, hook: null },
+      assetNames: { background: "background.png", hook: "hook.png" },
+      boards: [],
+      boardConfigs: null,
+      boardShapeRegionUrls: [],
+      art: null,
+      artVersion: 0,
+      shape: null,
+      shapeKey: "",
+      timer: null,
+      noticeTimer: null,
+      loadId: 0,
+      destroyed: false,
+      designShapeRegionUrl: null,
+    };
+    const builtin = this.hookOptions.find((item) => item.type === "builtin");
+    if (builtin) {
+      this.selectedHookId = builtin.id;
+      this.hookName = builtin.label;
+    }
+    this.setOptions(this.initialOptions);
+  },
+  mounted() {
+    this.initialize();
+  },
+  beforeDestroy() {
+    this.engine.destroyed = true;
+    this.engine.loadId++;
+    clearTimeout(this.engine.timer);
+    clearTimeout(this.engine.noticeTimer);
+    if (this.engine.designShapeRegionUrl)
+      URL.revokeObjectURL(this.engine.designShapeRegionUrl);
+    (this.engine.boardShapeRegionUrls || []).forEach((url) =>
+      URL.revokeObjectURL(url),
+    );
+    this.engine.boardShapeRegionUrls = [];
+    this.engine.designShapeRegionUrl = null;
+  },
+  methods: {
+    reportError(e) {
+      this.error = e.message || String(e);
+      this.$emit("error", e);
+    },
+    async initialize() {
+      const engine = this.engine,
+        id = ++engine.loadId;
+      this.ready = false;
+      this.busy = true;
+      this.error = "";
+      try {
+        const urls = Object.assign({}, BUILTIN, this.assetUrls),
+          assets = {};
+        await Promise.all(
+          Object.keys(BUILTIN).map(async (name) => {
+            assets[name] = await loadImage(urls[name], this.crossOrigin);
+          }),
+        );
+        // Multi-plate: boardConfigs carries one entry per plate (set via
+        // setBoards). Without it we build a single plate from the `src` prop,
+        // keeping the legacy path byte-identical.
+        // No propagated src and no plan boards => render the scene background
+        // only; no default demo plate until the user actually designs one.
+        const configs =
+          engine.boardConfigs && engine.boardConfigs.length
+            ? engine.boardConfigs
+            : this.src
+            ? [
+                {
+                  id: "b0",
+                  src: this.src,
+                  hole: engine.designHole,
+                  shapeRegionUrl: engine.designShapeRegionUrl,
+                  transform: null,
+                },
+              ]
+            : [];
+        const boards = [];
+        for (const cfg of configs) {
+          const source = cfg.src || this.src;
+          const img = await loadImage(source, this.crossOrigin);
+          if (img.width * img.height > 25000000)
+            throw Error("图片过大，请缩小到 2500 万像素以内。");
+          let shapeRegionImg = null;
+          if (cfg.shapeRegionUrl) {
+            try {
+              shapeRegionImg = await loadImage(
+                cfg.shapeRegionUrl,
+                this.crossOrigin,
+              );
+            } catch (e) {
+              shapeRegionImg = null;
+            }
+          }
+          if (engine.destroyed || id !== engine.loadId) return;
+          const art = prepareArt(img);
+          if (shapeRegionImg) art.shapeRegion = shapeRegionImg;
+          boards.push({
+            id: cfg.id || "b" + boards.length,
+            hole: cfg.hole || null,
+            shapeRegionUrl: cfg.shapeRegionUrl || null,
+            transform: cfg.transform || null,
+            o: cfg.o || null,
+            art,
+            artVersion: (engine.artVersion = engine.artVersion + 1),
+            shapeKey: "",
+            shape: null,
+            width: img.width,
+            height: img.height,
+          });
+        }
+        if (engine.destroyed || id !== engine.loadId) return;
+        engine.builtinAssets = assets;
+        engine.assets = Object.assign({}, assets, engine.assetOverrides);
+        ["background", "hook"].forEach((name) => {
+          if (!engine.assetOverrides[name]) {
+            try {
+              engine.assetData[name] = imageToDataUrl(
+                assets[name],
+                name === "background" ? "image/jpeg" : "image/png",
+              );
+              engine.assetNames[name] = name + ".png";
+            } catch (e) {
+              engine.assetData[name] = null;
+            }
+          }
+        });
+        engine.boards = boards;
+        // Legacy single-plate path: the design canvas owns the hole position,
+        // so derive it into the shared options (drives the settings hint).
+        if (boards.length === 1 && !boards[0].hole) {
+          this.applyDesignHole(boards[0].art);
+        }
+        this.filename = this.src ? "传入的图片" : "";
+        this.dimensions = boards.length
+          ? boards[0].width + " × " + boards[0].height
+          : "";
+        this.ready = true;
+        await this.$nextTick();
+        if (engine.destroyed || id !== engine.loadId) return;
+        this.redraw();
+        this.$emit("ready");
+      } catch (e) {
+        if (!engine.destroyed && id === engine.loadId) this.reportError(e);
+      } finally {
+        if (!engine.destroyed && id === engine.loadId) this.busy = false;
+      }
+    },
+    scheduleRedraw() {
+      if (!this.engine || this.engine.destroyed) return;
+      clearTimeout(this.engine.timer);
+      this.engine.timer = setTimeout(() => this.redraw(), 35);
+    },
+    redraw() {
+      if (!this.ready || this.engine.destroyed || !this.$refs.preview) return;
+      try {
+        const items = this.engine.boards.map((board) => {
+          const blockO = this.blockOptions(board);
+          const key = [
+            board.artVersion,
+            blockO.border,
+            blockO.smooth,
+            blockO.holeX,
+            blockO.holeY,
+            blockO.holeShape,
+            blockO.hook,
+            // 挂孔在 makeShape 内按规格比例缩放，规格变化必须重算 shape。
+            blockO.specSize,
+          ].join("|");
+          if (key !== board.shapeKey) {
+            board.shape = makeShape(board.art, blockO);
+            board.shapeKey = key;
+          }
+          return {
+            art: board.art,
+            o: blockO,
+            shape: board.shape,
+            transform: board.transform,
+          };
+        });
+        composeScene(this.$refs.preview, this.engine.assets, this.o, items);
+      } catch (e) {
+        this.reportError(e);
+      }
+    },
+    // Per-plate options: the shared scene options plus this plate's own hole
+    // mapping. A plate without a design hole (the legacy single-plate case)
+    // returns the shared options object untouched, so nothing shifts.
+    blockOptions(board, base) {
+      const shared = base || this.o;
+      if (!board) return shared;
+      // Per-plate overrides (material/contour/hook) beat the shared options.
+      const merged = board.o ? Object.assign({}, shared, board.o) : shared;
+      if (!board.hole || !board.art || !board.art.box) return merged;
+      const offsets = holeOffsetsFromPoint(board.art.box, board.hole);
+      return Object.assign({}, merged, {
+        holeX: offsets.holeX,
+        holeY: offsets.holeY,
+        holeShape: board.hole.shape === "square" ? "square" : "ring",
+      });
+    },
+    // Public API: replace the scene's plates. Each item is
+    // { id?, src, hole?, shapeRegion?, transform? }; shapeRegion is a Blob.
+    // An empty list resets to the single-plate `src` prop.
+    setBoards(list) {
+      const engine = this.engine;
+      (engine.boardShapeRegionUrls || []).forEach((url) =>
+        URL.revokeObjectURL(url),
+      );
+      engine.boardShapeRegionUrls = [];
+      if (!Array.isArray(list) || !list.length) {
+        engine.boardConfigs = null;
+        this.initialize();
+        return;
+      }
+      engine.boardConfigs = list.map((item, i) => {
+        let shapeRegionUrl = null;
+        if (item.shapeRegion instanceof Blob) {
+          shapeRegionUrl = URL.createObjectURL(item.shapeRegion);
+          engine.boardShapeRegionUrls.push(shapeRegionUrl);
+        }
+        return {
+          id: item.id || "b" + i,
+          src: item.src,
+          hole: item.hole || null,
+          shapeRegionUrl,
+          transform: item.transform || null,
+          o: item.o || null,
+        };
+      });
+      this.initialize();
+    },
+    // Receives the merged component area captured on the design canvas. It
+    // only extends the product silhouette (the shape mask), so the acrylic
+    // material stays translucent over the added ear and the punched hole
+    // remains see-through. The printable artwork layer is never altered.
+    setDesignShapeRegion(blob) {
+      const engine = this.engine;
+      if (engine.designShapeRegionUrl) {
+        URL.revokeObjectURL(engine.designShapeRegionUrl);
+      }
+      engine.designShapeRegionUrl =
+        blob instanceof Blob ? URL.createObjectURL(blob) : null;
+      engine.shapeKey = "";
+    },
+    applyDesignHole(art) {
+      const hole = this.engine.designHole;
+      if (!hole || !art || !art.box) return;
+      const offsets = holeOffsetsFromPoint(art.box, hole);
+      this.o.holeX = offsets.holeX;
+      this.o.holeY = offsets.holeY;
+      this.o.holeShape = hole.shape === "square" ? "square" : "ring";
+    },
+    setOptions(options) {
+      const ranges = {
+        border: [3, 25],
+        smooth: [0, 12],
+        cutLine: [0, 100],
+        dpi: [1, 1200],
+        stickerSize: [1, 300],
+        specSize: [1, 300],
+        interfaceGuideWidth: [1, 1200],
+        interfaceGuideHeight: [1, 500],
+        interfaceTabWidth: [1, 1200],
+        interfaceTabHeight: [1, 500],
+        density: [10, 100],
+        shine: [0, 80],
+        intensity: [0, 100],
+        thickness: [1, 7],
+        baseOpacity: [0, 100],
+        textureScale: [20, 300],
+        textureOpacity: [0, 100],
+        holeX: [-90, 90],
+        holeY: [-30, 45],
+        productX: [-150, 150],
+        productY: [-150, 150],
+        productScale: [50, 180],
+        productRotation: [-30, 30],
+        shadowX: [-30, 30],
+        shadowY: [-30, 30],
+        shadowBlur: [0, 30],
+        shadowOpacity: [0, 70],
+      };
+      Object.keys(DEFAULTS).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(options || {}, key)) return;
+        let value = options[key];
+        if (ranges[key]) {
+          value = Number(value);
+          if (!Number.isFinite(value)) return;
+          value = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
+        }
+        if (key === "material" && !MATERIALS.some((m) => m[0] === value))
+          return;
+        if (
+          key === "background" &&
+          !["scene", "white", "transparent"].includes(value)
+        )
+          return;
+        if (
+          (key === "tint" || key === "baseColor") &&
+          !/^#[0-9a-f]{6}$/i.test(value)
+        )
+          return;
+        if (key === "hook" || key === "interfaceTabEnabled")
+          value = Boolean(value);
+        if (key === "holeShape" && !["ring", "square"].includes(value)) return;
+        this.o[key] = value;
+      });
+    },
+    async upload(file) {
+      if (!file || this.busy || !this.ready) return;
+      this.error = "";
+      if (file.type !== "image/png") {
+        this.reportError(Error("请选择透明背景 PNG 图片。"));
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        this.reportError(Error("请选择小于 20 MB 的图片。"));
+        return;
+      }
+      // In the combined workspace, the left upload feeds the design canvas.
+      // The effect preview is only replaced after the user applies that design.
+      if (this.deferArtworkUpload) {
+        this.filename = file.name;
+        this.dimensions = "";
+        this.$emit("upload", file);
+        if (this.$refs.fileInput) this.$refs.fileInput.value = "";
+        return;
+      }
+      const engine = this.engine,
+        id = ++engine.loadId,
+        url = URL.createObjectURL(file);
+      this.busy = true;
+      try {
+        const img = await loadImage(url);
+        if (img.width * img.height > 25000000)
+          throw Error("图片过大，请缩小到 2500 万像素以内。");
+        const candidate = prepareArt(img);
+        if (engine.destroyed || id !== engine.loadId) return;
+        engine.boards = [
+          {
+            id: "b0",
+            hole: null,
+            shapeRegionUrl: null,
+            transform: null,
+            art: candidate,
+            artVersion: engine.artVersion + 1,
+            shapeKey: "",
+            shape: null,
+            width: img.width,
+            height: img.height,
+          },
+        ];
+        engine.artVersion++;
+        engine.boardConfigs = null;
+        // A directly uploaded PNG has no design-canvas component; fall back
+        // to the manual hole settings.
+        engine.designHole = null;
+        this.setDesignShapeRegion(null);
+        this.filename = file.name;
+        this.dimensions = img.width + " × " + img.height;
+        this.o.holeX = 0;
+        this.o.holeY = 0;
+        this.redraw();
+        this.$emit("upload", file);
+      } catch (e) {
+        if (!engine.destroyed && id === engine.loadId) this.reportError(e);
+      } finally {
+        URL.revokeObjectURL(url);
+        if (!engine.destroyed && id === engine.loadId) {
+          this.busy = false;
+          if (this.$refs.fileInput) this.$refs.fileInput.value = "";
+        }
+      }
+    },
+    async uploadAsset(name, file) {
+      if (!file) return;
+      if (!["background", "hook", "glitter", "reflection"].includes(name))
+        return;
+      if (!/^image\//.test(file.type)) {
+        this.reportError(Error("请选择图片素材。"));
+        return;
+      }
+      if (file.size > 15 * 1024 * 1024) {
+        this.reportError(Error("素材图片不能超过 15 MB。"));
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await loadImage(url, "");
+        if (img.width * img.height > 25000000)
+          throw Error("素材图片过大，请缩小到 2500 万像素以内。");
+        this.engine.assetOverrides[name] = img;
+        this.engine.assets[name] = img;
+        if (name === "background" || name === "hook") {
+          this.engine.assetData[name] = imageToDataUrl(
+            img,
+            name === "background" ? "image/jpeg" : "image/png",
+          );
+          this.engine.assetNames[name] = file.name;
+        }
+        if (name === "background") {
+          this.o.background = "scene";
+          this.scenePreset = "custom";
+        }
+        if (name === "hook") {
+          const upload = this.hookOptions.find(
+            (item) => item.type === "upload",
+          );
+          this.o.hook = true;
+          this.hookName = file.name;
+          this.selectedHookId = upload ? upload.id : "custom";
+        }
+        this.redraw();
+        this.$emit("asset-change", { name, file });
+      } catch (e) {
+        this.reportError(e);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    },
+    resetAsset(name) {
+      if (this.engine.builtinAssets[name]) {
+        delete this.engine.assetOverrides[name];
+        this.engine.assets[name] = this.engine.builtinAssets[name];
+        if (name === "background" || name === "hook") {
+          try {
+            this.engine.assetData[name] = imageToDataUrl(
+              this.engine.builtinAssets[name],
+              name === "background" ? "image/jpeg" : "image/png",
+            );
+            this.engine.assetNames[name] = name + ".png";
+          } catch (e) {
+            this.engine.assetData[name] = null;
+          }
+        }
+        if (name === "hook") {
+          const builtin =
+            this.hookOptions.find((item) => item.type === "builtin") ||
+            DEFAULT_HOOK_OPTIONS[0];
+          this.hookName = builtin.label;
+          this.selectedHookId = builtin.id;
+        }
+        this.redraw();
+      }
+    },
+    // 挂扣变更通知：loadConfig 恢复期间不发（外层效果图重渲依赖它）。
+    notifyHookChange() {
+      if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
+    },
+    async selectHook(option) {
+      if (!option || !option.id) return;
+      if (option.type === "none") {
+        this.o.hook = false;
+        this.selectedHookId = option.id;
+        this.hookName = option.label;
+        this.notifyHookChange();
+        return;
+      }
+      if (option.type === "upload") return;
+      const src = this.hookOptionSrc(option);
+      if (!src) {
+        this.o.hook = true;
+        this.resetAsset("hook");
+        this.selectedHookId = option.id;
+        this.hookName = option.label;
+        this.notifyHookChange();
+        return;
+      }
+      try {
+        // 内置挂扣图片按 id 缓存（engine 与组件同生命周期），
+        // 避免每次切换都重新加载+重编码同一张图。
+        const engine = this.engine;
+        engine.builtinHookCache = engine.builtinHookCache || {};
+        let cached = engine.builtinHookCache[option.id];
+        if (!cached) {
+          const img = await loadImage(src, this.crossOrigin);
+          if (img.width * img.height > 25000000)
+            throw Error("挂扣图片像素过大。");
+          cached = { img, dataUrl: imageToDataUrl(img) };
+          engine.builtinHookCache[option.id] = cached;
+        }
+        const { img, dataUrl } = cached;
+        this.engine.assetOverrides.hook = img;
+        this.engine.assets.hook = img;
+        this.engine.assetData.hook = dataUrl;
+        this.engine.assetNames.hook = option.label + ".png";
+        this.o.hook = true;
+        this.selectedHookId = option.id;
+        this.hookName = option.label;
+        this.redraw();
+        this.notifyHookChange();
+      } catch (e) {
+        this.reportError(e);
+      }
+    },
+    hookOptionStyle(option) {
+      const src = option.preview || this.hookOptionSrc(option);
+      return src
+        ? { backgroundImage: 'url("' + String(src).replace(/"/g, "") + '")' }
+        : {};
+    },
+    hookOptionSrc(option) {
+      if (!option) return "";
+      // Every builtin option is immediately usable. A caller may override the
+      // bundled source with `src`; otherwise resolve its id from local assets.
+      if (option.type === "builtin")
+        return option.src || BUILTIN_HOOK_SOURCES[option.id] || hookUrl;
+      return option.src || "";
+    },
+    createConfig() {
+      return {
+        version: 4,
+        options: Object.assign({}, this.o),
+        export: { size: this.exportSize, format: this.exportFormat },
+        scenePreset: this.scenePreset,
+        assets: {
+          background: {
+            name: this.engine.assetNames.background || "background.png",
+            dataUrl: this.engine.assetData.background || null,
+          },
+          hook: {
+            name: this.engine.assetNames.hook || "hook.png",
+            dataUrl: this.engine.assetData.hook || null,
+            builtin:
+              (
+                this.hookOptions.find(
+                  (item) => item.id === this.selectedHookId,
+                ) || {}
+              ).type === "builtin",
+            selection: this.selectedHookId,
+          },
+        },
+      };
+    },
+    async loadConfig(config) {
+      if (!config || typeof config !== "object" || !config.options)
+        throw Error("配置文件格式不正确。");
+      // 加载期 suppress selectHook 的 change 通知：重放挂扣选择属于
+      // 配置恢复而非用户操作，避免触发外层的方案重渲反馈环。
+      this.loadingConfig = true;
+      try {
+        await this.applyLoadConfig(config);
+      } finally {
+        this.loadingConfig = false;
+      }
+    },
+    async applyLoadConfig(config) {
+      for (const name of ["background", "hook"]) {
+        const embedded = config.assets && config.assets[name];
+        if (name === "hook" && embedded && embedded.builtin) {
+          const selected = this.hookOptions.find(
+            (item) => item.id === embedded.selection,
+          );
+          if (selected && selected.type === "builtin")
+            await this.selectHook(selected);
+          else this.resetAsset("hook");
+          continue;
+        }
+        if (!embedded || !embedded.dataUrl) continue;
+        if (
+          typeof embedded.dataUrl !== "string" ||
+          embedded.dataUrl.length > 22 * 1024 * 1024 ||
+          !/^data:image\/(png|jpeg|webp);base64,/i.test(embedded.dataUrl)
+        )
+          throw Error(
+            "方案中的" +
+              (name === "background" ? "背景" : "挂扣") +
+              "图片无效或过大。",
+          );
+        const img = await loadImage(embedded.dataUrl, "");
+        if (img.width * img.height > 25000000)
+          throw Error("方案中的图片像素过大。");
+        this.engine.assetOverrides[name] = img;
+        this.engine.assets[name] = img;
+        this.engine.assetData[name] = embedded.dataUrl;
+        this.engine.assetNames[name] = String(
+          embedded.name || name + ".png",
+        ).slice(0, 120);
+        if (name === "hook") {
+          const selected = this.hookOptions.find(
+              (item) => item.id === embedded.selection,
+            ),
+            upload = this.hookOptions.find((item) => item.type === "upload");
+          this.hookName = this.engine.assetNames[name];
+          this.selectedHookId = selected
+            ? selected.id
+            : upload
+            ? upload.id
+            : "custom";
+        }
+      }
+      this.setOptions(config.options);
+      if (!this.o.hook) {
+        const none = this.hookOptions.find((item) => item.type === "none");
+        if (none) {
+          this.selectedHookId = none.id;
+          this.hookName = none.label;
+        }
+      }
+      if (config.export) {
+        if ([1000, 1500, 2000].includes(Number(config.export.size)))
+          this.exportSize = Number(config.export.size);
+        if (["png", "jpeg"].includes(config.export.format))
+          this.exportFormat = config.export.format;
+      }
+      this.scenePreset = config.scenePreset || "custom";
+      this.redraw();
+    },
+    // Public Promise<Blob> API; does not initiate a download.
+    exportImage(options = {}) {
+      if (!this.ready || this.busy)
+        return Promise.reject(Error("图片尚未加载完成。"));
+      const size = Number(options.size || this.exportSize),
+        format = options.format || this.exportFormat;
+      if (!Number.isInteger(size) || size < 100 || size > 4096)
+        return Promise.reject(Error("导出尺寸须为 100–4096 的整数。"));
+      if (!["png", "jpeg"].includes(format))
+        return Promise.reject(Error("导出格式仅支持 png 或 jpeg。"));
+      return new Promise((resolve, reject) => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = c.height = size;
+          const opts = Object.assign({}, this.o);
+          if (format === "jpeg" && opts.background === "transparent")
+            opts.background = "white";
+          const items = this.engine.boards.map((board) => {
+            const blockO = this.blockOptions(board, opts);
+            return {
+              art: board.art,
+              o: blockO,
+              shape: makeShape(board.art, blockO),
+              transform: board.transform,
+            };
+          });
+          composeScene(c, this.engine.assets, opts, items);
+          c.toBlob(
+            (blob) =>
+              blob
+                ? resolve(blob)
+                : reject(Error("导出失败，请检查素材跨域权限。")),
+            "image/" + format,
+            0.95,
+          );
+        } catch (e) {
+          reject(e);
+        }
+      });
+    },
+    position(e) {
+      const r = this.$refs.preview.getBoundingClientRect(),
+        scale = this.o.productScale / 100,
+        angle = (-this.o.productRotation * Math.PI) / 180;
+      let x = ((e.clientX - r.left) / r.width) * 500 - 250 - this.o.productX,
+        y = ((e.clientY - r.top) / r.height) * 500 - 250 - this.o.productY;
+      const rx = x * Math.cos(angle) - y * Math.sin(angle),
+        ry = x * Math.sin(angle) + y * Math.cos(angle);
+      return { x: rx / scale + 250, y: ry / scale + 250 };
+    },
+    dragStart(e) {
+      if (!this.o.hook || !this.ready) return;
+      const shapes = this.engine.boards.map((b) => b.shape).filter(Boolean);
+      if (!shapes.length) return;
+      const p = this.position(e);
+      const hit = shapes.some((s) => Math.hypot(p.x - s.hx, p.y - s.hy) < 35);
+      if (hit) {
+        this.dragging = true;
+        e.target.setPointerCapture(e.pointerId);
+      }
+    },
+    dragMove(e) {
+      if (!this.dragging) return;
+      const p = this.position(e);
+      this.o.holeX = Math.max(-90, Math.min(90, Math.round(p.x - 250)));
+      this.o.holeY = Math.max(-30, Math.min(45, Math.round(p.y - 240)));
+    },
+    stopDrag() {
+      this.dragging = false;
+    },
+  },
+};
+</script>
+<template>
+  <div class="acrylic-editor">
+    <main
+      :class="[
+        'editor-' + mode,
+        { 'has-replace': mode === 'preview' && previewReplace },
+      ]"
+    >
+      <aside>
+        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <section>
+          <h2>导入图案</h2>
+          <input
+            ref="fileInput"
+            class="hidden"
+            type="file"
+            accept="image/png"
+            @change="upload($event.target.files[0])"
+          /><button
+            class="upload"
+            @click="$refs.fileInput.click()"
+            @dragover.prevent
+            @drop.prevent="upload($event.dataTransfer.files[0])"
+          >
+            <span class="upload-icon">＋</span><strong>选择透明图案</strong
+            ><small>点击或拖入 PNG · 最大 20 MB</small>
+          </button>
+          <div class="file-info">
+            <span class="file-name">{{ filename }}</span
+            ><span>{{ dimensions }}</span>
+          </div>
+        </section>
+        <section>
+          <h2>规格</h2>
+          <div class="spec-options">
+            <button
+              v-for="size in specSizes"
+              :key="size.value"
+              :class="['spec-option', { active: o.specSize === size.value }]"
+              :aria-pressed="o.specSize === size.value"
+              @click="o.specSize = size.value"
+            >
+              {{ size.label }}
+            </button>
+          </div>
+        </section>
+        <section>
+          <h2>板材材质</h2>
+          <div class="materials">
+            <button
+              v-for="m in materials"
+              :key="m[0]"
+              :class="['material', { active: o.material === m[0] }]"
+              :aria-pressed="o.material === m[0]"
+              @click="o.material = m[0]"
+            >
+              <i :class="m[2]"></i><span>{{ m[1] }}</span
+              ><b v-if="o.material === m[0]">✓</b>
+            </button>
+          </div>
+        </section>
+        <section v-if="isPreview">
+          <h2>挂扣选择</h2>
+          <div class="hook-options">
+            <template v-for="option in hookOptions"
+              ><label
+                v-if="option.type === 'upload'"
+                :key="option.id"
+                :class="{ active: selectedHookId === option.id }"
+                ><i class="hook-upload">＋</i
+                ><span>{{
+                  selectedHookId === option.id ? hookName : option.label
+                }}</span
+                ><input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  @change="
+                    uploadAsset('hook', $event.target.files[0]);
+                    $event.target.value = '';
+                  " /></label
+              ><button
+                v-else
+                :key="option.id"
+                :class="{ active: selectedHookId === option.id }"
+                @click="selectHook(option)"
+              >
+                <i v-if="option.type === 'none'" class="hook-none">×</i
+                ><i
+                  v-else
+                  :class="option.src ? 'hook-preset' : 'hook-thumb'"
+                  :style="hookOptionStyle(option)"
+                ></i
+                ><span>{{ option.label }}</span>
+              </button></template
+            >
+          </div>
+        </section>
+      </aside>
+      <section v-if="isPreview" class="design-canvas">
+        <slot name="design-canvas"></slot>
+      </section>
+      <div :class="['workspace', { vacant: previewReplace }]">
+        <div
+          :class="['canvas-wrap', { 'canvas-wrap--replaced': previewReplace }]"
+        >
+          <canvas
+            ref="preview"
+            width="1000"
+            height="1000"
+            aria-label="亚克力挂件实时效果预览"
+            @pointerdown="dragStart"
+            @pointermove="dragMove"
+            @pointerup="stopDrag"
+            @pointercancel="stopDrag"
+          ></canvas>
+          <div v-if="!ready" class="loading">
+            {{ error || "正在准备素材…" }}
+          </div>
+        </div>
+      </div>
+    </main>
+    <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
+  </div>
+</template>
+<style scoped src="./style.css"></style>

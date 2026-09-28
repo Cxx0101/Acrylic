@@ -7,7 +7,7 @@ import {
   composeScene,
   holeOffsetsFromPoint,
 } from "./render";
-import { SPEC_SIZES, SPEC_DEFAULT_SIZE } from "../../planStore.js";
+import { SPEC_DEFAULT_SIZE } from "../planStore.js";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
@@ -23,7 +23,7 @@ const DEFAULTS = {
   cutLine: 4,
   dpi: 300,
   stickerSize: 50,
-  // 默认规格 = SPEC_SIZES[0]（5cm）。
+  // 默认规格 = 5cm（效果渲染按共享 options 的 specSize 缩放）。
   specSize: SPEC_DEFAULT_SIZE,
   interfaceTabEnabled: false,
   interfaceGuideWidth: 300,
@@ -102,16 +102,6 @@ export default {
     assetUrls: { type: Object, default: () => ({}) },
     initialOptions: { type: Object, default: () => ({}) },
     crossOrigin: { type: String, default: "anonymous" },
-    mode: {
-      type: String,
-      default: "full",
-      validator: (value) => ["full", "preview", "settings"].includes(value),
-    },
-    showHeader: { type: Boolean, default: true },
-    deferArtworkUpload: { type: Boolean, default: false },
-    // 预览页用走马灯替换 mockup 预览时置 true：canvas-wrap 仅隐藏不销毁，
-    // exportImage / setBoards 渲染链不受影响。
-    previewReplace: { type: Boolean, default: false },
     hookOptions: {
       type: Array,
       default: () =>
@@ -127,9 +117,6 @@ export default {
       filename: "切图_05.png",
       dimensions: "",
       o: Object.assign({}, DEFAULTS),
-      materials: MATERIALS,
-      // 规格表共享自 planStore（含 scale 放大倍数），克隆防组件间串改。
-      specSizes: SPEC_SIZES.map((item) => Object.assign({}, item)),
       scenePreset: "studio",
       exportSize: 1500,
       exportFormat: "png",
@@ -145,14 +132,6 @@ export default {
       // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
       loadingConfig: false,
     };
-  },
-  computed: {
-    isPreview() {
-      return this.mode === "preview";
-    },
-    isSettings() {
-      return this.mode === "settings";
-    },
   },
   watch: {
     o: {
@@ -548,92 +527,6 @@ export default {
         this.o[key] = value;
       });
     },
-    async upload(file) {
-      if (!file || this.busy || !this.ready) return;
-      this.error = "";
-      if (file.type !== "image/png") {
-        this.reportError(Error("请选择透明背景 PNG 图片。"));
-        return;
-      }
-      if (file.size > 20 * 1024 * 1024) {
-        this.reportError(Error("请选择小于 20 MB 的图片。"));
-        return;
-      }
-      // In the combined workspace, the left upload feeds the design canvas.
-      // The effect preview is only replaced after the user applies that design.
-      if (this.deferArtworkUpload) {
-        this.filename = file.name;
-        this.dimensions = "";
-        this.$emit("upload", file);
-        if (this.$refs.fileInput) this.$refs.fileInput.value = "";
-        return;
-      }
-      const engine = this.engine,
-        id = ++engine.loadId,
-        url = URL.createObjectURL(file);
-      this.busy = true;
-      try {
-        const img = await loadImage(url);
-        if (img.width * img.height > 25000000)
-          throw Error("图片过大，请缩小到 2500 万像素以内。");
-        const candidate = prepareArt(img);
-        if (engine.destroyed || id !== engine.loadId) return;
-        engine.boards = [
-          {
-            id: "b0",
-            hole: null,
-            shapeRegionUrl: null,
-            transform: null,
-            art: candidate,
-            artVersion: engine.artVersion + 1,
-            shapeKey: "",
-            shape: null,
-            width: img.width,
-            height: img.height,
-          },
-        ];
-        engine.artVersion++;
-        engine.boardConfigs = null;
-        // A directly uploaded PNG has no design-canvas component; fall back
-        // to the manual hole settings.
-        engine.designHole = null;
-        this.setDesignShapeRegion(null);
-        this.filename = file.name;
-        this.dimensions = img.width + " × " + img.height;
-        this.o.holeX = 0;
-        this.o.holeY = 0;
-        this.redraw();
-        this.$emit("upload", file);
-      } catch (e) {
-        if (!engine.destroyed && id === engine.loadId) this.reportError(e);
-      } finally {
-        URL.revokeObjectURL(url);
-        if (!engine.destroyed && id === engine.loadId) {
-          this.busy = false;
-          if (this.$refs.fileInput) this.$refs.fileInput.value = "";
-        }
-      }
-    },
-    applyMaterialPreset(item) {
-      if (!item || !item.options) return;
-      // Material type stays global; the rest land on the selected plate.
-      const rest = Object.assign({}, item.options);
-      if (rest.material) {
-        this.setOptions({ material: rest.material });
-        delete rest.material;
-      }
-      Object.keys(rest).forEach((k) => {
-        if (rest[k] !== undefined) this.$set(this.boardEditingO, k, rest[k]);
-      });
-    },
-    removeMaterialPreset(index) {
-      this.customPresets.splice(index, 1);
-      this.customPresets = this.customPresets.slice();
-      localStorage.setItem(
-        "acrylic-material-presets",
-        JSON.stringify(this.customPresets),
-      );
-    },
     async uploadAsset(name, file) {
       if (!file) return;
       if (!["background", "hook", "glitter", "reflection"].includes(name))
@@ -709,6 +602,14 @@ export default {
     notifyHookChange() {
       if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
     },
+    hookOptionSrc(option) {
+      if (!option) return "";
+      // Every builtin option is immediately usable. A caller may override the
+      // bundled source with `src`; otherwise resolve its id from local assets.
+      if (option.type === "builtin")
+        return option.src || BUILTIN_HOOK_SOURCES[option.id] || hookUrl;
+      return option.src || "";
+    },
     async selectHook(option) {
       if (!option || !option.id) return;
       if (option.type === "none") {
@@ -754,20 +655,6 @@ export default {
       } catch (e) {
         this.reportError(e);
       }
-    },
-    hookOptionStyle(option) {
-      const src = option.preview || this.hookOptionSrc(option);
-      return src
-        ? { backgroundImage: 'url("' + String(src).replace(/"/g, "") + '")' }
-        : {};
-    },
-    hookOptionSrc(option) {
-      if (!option) return "";
-      // Every builtin option is immediately usable. A caller may override the
-      // bundled source with `src`; otherwise resolve its id from local assets.
-      if (option.type === "builtin")
-        return option.src || BUILTIN_HOOK_SOURCES[option.id] || hookUrl;
-      return option.src || "";
     },
     createConfig() {
       return {
@@ -969,341 +856,232 @@ export default {
 </script>
 <template>
   <div class="acrylic-editor">
-    <header v-if="showHeader">
-      <div class="brand">
-        <span class="logo">透</span
-        ><span>透物 <small>ACRYLIC STUDIO</small></span>
-      </div>
-      <span class="header-note">亚克力挂件 · 二维效果编辑器</span
-      ><button class="primary" :disabled="!ready || busy" @click="download">
-        ↓ 导出效果图
-      </button>
-    </header>
-    <main
-      :class="[
-        'editor-' + mode,
-        { 'has-replace': mode === 'preview' && previewReplace },
-      ]"
-    >
+    <main class="editor-settings">
       <aside>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
-        <section v-if="!isSettings">
-          <h2>导入图案</h2>
-          <input
-            ref="fileInput"
-            class="hidden"
-            type="file"
-            accept="image/png"
-            @change="upload($event.target.files[0])"
-          /><button
-            class="upload"
-            @click="$refs.fileInput.click()"
-            @dragover.prevent
-            @drop.prevent="upload($event.dataTransfer.files[0])"
-          >
-            <span class="upload-icon">＋</span><strong>选择透明图案</strong
-            ><small>点击或拖入 PNG · 最大 20 MB</small>
-          </button>
-          <div class="file-info">
-            <span class="file-name">{{ filename }}</span
-            ><span>{{ dimensions }}</span>
-          </div>
-        </section>
-        <section v-if="!isSettings">
-          <h2>规格</h2>
-          <div class="spec-options">
-            <button
-              v-for="size in specSizes"
-              :key="size.value"
-              :class="['spec-option', { active: o.specSize === size.value }]"
-              :aria-pressed="o.specSize === size.value"
-              @click="o.specSize = size.value"
-            >
-              {{ size.label }}
-            </button>
-          </div>
-        </section>
         <section>
-          <h2 v-if="!isSettings">板材材质</h2>
-          <div class="materials" v-if="!isSettings">
-            <button
-              v-for="m in materials"
-              :key="m[0]"
-              :class="['material', { active: o.material === m[0] }]"
-              :aria-pressed="o.material === m[0]"
-              @click="o.material = m[0]"
-            >
-              <i :class="m[2]"></i><span>{{ m[1] }}</span
-              ><b v-if="o.material === m[0]">✓</b>
-            </button>
+          <div class="asset-grid">
+            <label
+              >背景<input
+                type="file"
+                accept="image/*"
+                @change="
+                  uploadAsset('background', $event.target.files[0]);
+                  $event.target.value = '';
+                "
+            /></label>
           </div>
-          <template v-if="!isPreview">
-            <div class="asset-grid">
-              <label
-                >背景<input
-                  type="file"
-                  accept="image/*"
-                  @change="
-                    uploadAsset('background', $event.target.files[0]);
-                    $event.target.value = '';
-                  "
-              /></label>
-            </div>
-            <details class="advanced" open>
-              <summary>
-                自定义材质参数{{
-                  boardEditingName ? " · " + boardEditingName : ""
-                }}
-              </summary>
-              <label v-if="o.material === 'tinted'" class="color-label"
-                >板材颜色
-                <input type="color" v-model="boardEditingO.tint" /></label
-              ><label class="color-label"
-                >叠加底色
-                <span
-                  ><input type="color" v-model="boardEditingO.baseColor" />
-                  {{ boardEditingO.baseOpacity }}%</span
-                ></label
+          <details class="advanced" open>
+            <summary>
+              自定义材质参数{{
+                boardEditingName ? " · " + boardEditingName : ""
+              }}
+            </summary>
+            <label v-if="o.material === 'tinted'" class="color-label"
+              >板材颜色
+              <input type="color" v-model="boardEditingO.tint" /></label
+            ><label class="color-label"
+              >叠加底色
+              <span
+                ><input type="color" v-model="boardEditingO.baseColor" />
+                {{ boardEditingO.baseOpacity }}%</span
+              ></label
+            ><input
+              type="range"
+              min="0"
+              max="100"
+              v-model.number="boardEditingO.baseOpacity"
+            /><label v-if="o.material === 'glitter'" class="range-label"
+              >亮片密度 <output>{{ boardEditingO.density }}%</output
+              ><input
+                type="range"
+                min="10"
+                max="100"
+                v-model.number="boardEditingO.density" /></label
+            ><label v-if="o.material === 'glitter'" class="range-label"
+              >纹理大小 <output>{{ boardEditingO.textureScale }}%</output
+              ><input
+                type="range"
+                min="20"
+                max="300"
+                v-model.number="boardEditingO.textureScale" /></label
+            ><label v-if="o.material === 'glitter'" class="range-label"
+              >纹理透明度 <output>{{ boardEditingO.textureOpacity }}%</output
               ><input
                 type="range"
                 min="0"
                 max="100"
-                v-model.number="boardEditingO.baseOpacity"
-              /><label v-if="o.material === 'glitter'" class="range-label"
-                >亮片密度 <output>{{ boardEditingO.density }}%</output
-                ><input
-                  type="range"
-                  min="10"
-                  max="100"
-                  v-model.number="boardEditingO.density" /></label
-              ><label v-if="o.material === 'glitter'" class="range-label"
-                >纹理大小 <output>{{ boardEditingO.textureScale }}%</output
-                ><input
-                  type="range"
-                  min="20"
-                  max="300"
-                  v-model.number="boardEditingO.textureScale" /></label
-              ><label v-if="o.material === 'glitter'" class="range-label"
-                >纹理透明度 <output>{{ boardEditingO.textureOpacity }}%</output
-                ><input
-                  type="range"
-                  min="0"
-                  max="100"
-                  v-model.number="boardEditingO.textureOpacity" /></label
-              ><label class="range-label"
-                >材质强度 <output>{{ boardEditingO.intensity }}%</output
-                ><input
-                  type="range"
-                  min="0"
-                  max="100"
-                  v-model.number="boardEditingO.intensity" /></label
-              ><label class="range-label"
-                >板材厚度 <output>{{ boardEditingO.thickness }} px</output
-                ><input
-                  type="range"
-                  min="1"
-                  max="7"
-                  step="0.5"
-                  v-model.number="boardEditingO.thickness" /></label
-              ><label class="range-label"
-                >表面反光 <output>{{ boardEditingO.shine }}%</output
-                ><input
-                  type="range"
-                  min="0"
-                  max="80"
-                  v-model.number="boardEditingO.shine"
-              /></label>
-            </details>
-            <div v-if="customPresets.length" class="preset-list">
-              <span v-for="(preset, index) in customPresets" :key="preset.name"
-                ><button @click="applyMaterialPreset(preset)">
-                  {{ preset.name }}</button
-                ><button title="删除预设" @click="removeMaterialPreset(index)">
-                  ×
-                </button></span
-              >
-            </div>
-          </template>
-        </section>
-        <section v-if="isPreview">
-          <h2>挂扣选择</h2>
-          <div class="hook-options">
-            <template v-for="option in hookOptions"
-              ><label
-                v-if="option.type === 'upload'"
-                :key="option.id"
-                :class="{ active: selectedHookId === option.id }"
-                ><i class="hook-upload">＋</i
-                ><span>{{
-                  selectedHookId === option.id ? hookName : option.label
-                }}</span
-                ><input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  @change="
-                    uploadAsset('hook', $event.target.files[0]);
-                    $event.target.value = '';
-                  " /></label
-              ><button
-                v-else
-                :key="option.id"
-                :class="{ active: selectedHookId === option.id }"
-                @click="selectHook(option)"
-              >
-                <i v-if="option.type === 'none'" class="hook-none">×</i
-                ><i
-                  v-else
-                  :class="option.src ? 'hook-preset' : 'hook-thumb'"
-                  :style="hookOptionStyle(option)"
-                ></i
-                ><span>{{ option.label }}</span>
-              </button></template
+                v-model.number="boardEditingO.textureOpacity" /></label
+            ><label class="range-label"
+              >材质强度 <output>{{ boardEditingO.intensity }}%</output
+              ><input
+                type="range"
+                min="0"
+                max="100"
+                v-model.number="boardEditingO.intensity" /></label
+            ><label class="range-label"
+              >板材厚度 <output>{{ boardEditingO.thickness }} px</output
+              ><input
+                type="range"
+                min="1"
+                max="7"
+                step="0.5"
+                v-model.number="boardEditingO.thickness" /></label
+            ><label class="range-label"
+              >表面反光 <output>{{ boardEditingO.shine }}%</output
+              ><input
+                type="range"
+                min="0"
+                max="80"
+                v-model.number="boardEditingO.shine"
+            /></label>
+          </details>
+          <div v-if="customPresets.length" class="preset-list">
+            <span v-for="(preset, index) in customPresets" :key="preset.name"
+              ><button @click="applyMaterialPreset(preset)">
+                {{ preset.name }}</button
+              ><button title="删除预设" @click="removeMaterialPreset(index)">
+                ×
+              </button></span
             >
           </div>
         </section>
-        <template v-if="!isPreview">
-          <section>
-            <h2>
-              <span>02</span> 轮廓与挂孔{{
-                boardEditingName ? " · " + boardEditingName : ""
-              }}
-            </h2>
-            <label class="select-label"
-              >挂扣<select
-                :value="boardEditingO.hook === false ? 'none' : 'auto'"
-                @change="boardEditingO.hook = $event.target.value !== 'none'"
-              >
-                <option value="auto">需要挂扣</option>
-                <option value="none">无需挂扣</option>
-              </select></label
+        <section>
+          <h2>
+            <span>02</span> 轮廓与挂孔{{
+              boardEditingName ? " · " + boardEditingName : ""
+            }}
+          </h2>
+          <label class="select-label"
+            >挂扣<select
+              :value="boardEditingO.hook === false ? 'none' : 'auto'"
+              @change="boardEditingO.hook = $event.target.value !== 'none'"
             >
+              <option value="auto">需要挂扣</option>
+              <option value="none">无需挂扣</option>
+            </select></label
+          >
+          <label class="range-label"
+            >透明留边 <output>{{ boardEditingO.border }} px</output
+            ><input
+              type="range"
+              min="3"
+              max="25"
+              v-model.number="boardEditingO.border" /></label
+          ><label class="range-label"
+            >轮廓圆滑 <output>{{ boardEditingO.smooth }}</output
+            ><input
+              type="range"
+              min="0"
+              max="12"
+              v-model.number="boardEditingO.smooth"
+          /></label>
+        </section>
+        <section>
+          <h2><span>03</span> 图案工艺</h2>
+          <label class="number-setting"
+            >刀线(px)
+            <input
+              v-model.number="o.cutLine"
+              type="number"
+              min="0"
+              step="1"
+            /> </label
+          ><label class="number-setting"
+            >DPI
+            <input
+              v-model.number="o.dpi"
+              type="number"
+              min="1"
+              step="1"
+            /> </label
+          ><label class="number-setting"
+            >组件大小(px)
+            <input
+              v-model.number="o.stickerSize"
+              type="number"
+              min="1"
+              step="1"
+            /> </label
+          ><label class="toggle-label number-setting-toggle"
+            >启用底部插口
+            <input type="checkbox" v-model="o.interfaceTabEnabled" /> </label
+          ><label class="number-setting"
+            >插口范围宽(px)
+            <input
+              v-model.number="o.interfaceGuideWidth"
+              type="number"
+              min="1"
+              step="1"
+              :disabled="!o.interfaceTabEnabled"
+            /> </label
+          ><label class="number-setting"
+            >插口范围高(px)
+            <input
+              v-model.number="o.interfaceGuideHeight"
+              type="number"
+              min="1"
+              step="1"
+              :disabled="!o.interfaceTabEnabled"
+            /> </label
+          ><label class="number-setting"
+            >实体插口宽(px)
+            <input
+              v-model.number="o.interfaceTabWidth"
+              type="number"
+              min="1"
+              step="1"
+              :disabled="!o.interfaceTabEnabled"
+            /> </label
+          ><label class="number-setting"
+            >实体插口高(px)
+            <input
+              v-model.number="o.interfaceTabHeight"
+              type="number"
+              min="1"
+              step="1"
+              :disabled="!o.interfaceTabEnabled"
+            />
+          </label>
+        </section>
+        <section>
+          <h2><span>04</span> 场景与位置</h2>
+          <details class="advanced">
+            <summary>阴影参数</summary>
             <label class="range-label"
-              >透明留边 <output>{{ boardEditingO.border }} px</output
+              >阴影透明度 <output>{{ o.shadowOpacity }}%</output
               ><input
                 type="range"
-                min="3"
-                max="25"
-                v-model.number="boardEditingO.border" /></label
+                min="0"
+                max="70"
+                v-model.number="o.shadowOpacity" /></label
             ><label class="range-label"
-              >轮廓圆滑 <output>{{ boardEditingO.smooth }}</output
+              >阴影模糊 <output>{{ o.shadowBlur }}</output
               ><input
                 type="range"
                 min="0"
-                max="12"
-                v-model.number="boardEditingO.smooth"
+                max="30"
+                v-model.number="o.shadowBlur" /></label
+            ><label class="range-label"
+              >阴影水平 <output>{{ o.shadowX }}</output
+              ><input
+                type="range"
+                min="-30"
+                max="30"
+                v-model.number="o.shadowX" /></label
+            ><label class="range-label"
+              >阴影垂直 <output>{{ o.shadowY }}</output
+              ><input
+                type="range"
+                min="-30"
+                max="30"
+                v-model.number="o.shadowY"
             /></label>
-          </section>
-          <section>
-            <h2><span>03</span> 图案工艺</h2>
-            <label class="number-setting"
-              >刀线(px)
-              <input
-                v-model.number="o.cutLine"
-                type="number"
-                min="0"
-                step="1"
-              /> </label
-            ><label class="number-setting"
-              >DPI
-              <input
-                v-model.number="o.dpi"
-                type="number"
-                min="1"
-                step="1"
-              /> </label
-            ><label class="number-setting"
-              >组件大小(px)
-              <input
-                v-model.number="o.stickerSize"
-                type="number"
-                min="1"
-                step="1"
-              /> </label
-            ><label class="toggle-label number-setting-toggle"
-              >启用底部插口
-              <input type="checkbox" v-model="o.interfaceTabEnabled" /> </label
-            ><label class="number-setting"
-              >插口范围宽(px)
-              <input
-                v-model.number="o.interfaceGuideWidth"
-                type="number"
-                min="1"
-                step="1"
-                :disabled="!o.interfaceTabEnabled"
-              /> </label
-            ><label class="number-setting"
-              >插口范围高(px)
-              <input
-                v-model.number="o.interfaceGuideHeight"
-                type="number"
-                min="1"
-                step="1"
-                :disabled="!o.interfaceTabEnabled"
-              /> </label
-            ><label class="number-setting"
-              >实体插口宽(px)
-              <input
-                v-model.number="o.interfaceTabWidth"
-                type="number"
-                min="1"
-                step="1"
-                :disabled="!o.interfaceTabEnabled"
-              /> </label
-            ><label class="number-setting"
-              >实体插口高(px)
-              <input
-                v-model.number="o.interfaceTabHeight"
-                type="number"
-                min="1"
-                step="1"
-                :disabled="!o.interfaceTabEnabled"
-              />
-            </label>
-          </section>
-          <section>
-            <h2><span>04</span> 场景与位置</h2>
-            <details class="advanced">
-              <summary>阴影参数</summary>
-              <label class="range-label"
-                >阴影透明度 <output>{{ o.shadowOpacity }}%</output
-                ><input
-                  type="range"
-                  min="0"
-                  max="70"
-                  v-model.number="o.shadowOpacity" /></label
-              ><label class="range-label"
-                >阴影模糊 <output>{{ o.shadowBlur }}</output
-                ><input
-                  type="range"
-                  min="0"
-                  max="30"
-                  v-model.number="o.shadowBlur" /></label
-              ><label class="range-label"
-                >阴影水平 <output>{{ o.shadowX }}</output
-                ><input
-                  type="range"
-                  min="-30"
-                  max="30"
-                  v-model.number="o.shadowX" /></label
-              ><label class="range-label"
-                >阴影垂直 <output>{{ o.shadowY }}</output
-                ><input
-                  type="range"
-                  min="-30"
-                  max="30"
-                  v-model.number="o.shadowY"
-              /></label>
-            </details>
-          </section>
-        </template>
+          </details>
+        </section>
       </aside>
-      <section v-if="isPreview" class="design-canvas">
-        <slot name="design-canvas"></slot>
-      </section>
-      <div :class="['workspace', { vacant: previewReplace }]">
-        <div
-          :class="['canvas-wrap', { 'canvas-wrap--replaced': previewReplace }]"
-        >
+      <div class="workspace">
+        <div class="canvas-wrap">
           <canvas
             ref="preview"
             width="1000"
@@ -1321,8 +1099,6 @@ export default {
             {{ error || "正在准备素材…" }}
           </div>
         </div>
-        <!-- 预览页可提供此插槽：替代 mockup 画布位置（走马灯等） -->
-        <slot name="preview-replace"></slot>
       </div>
     </main>
     <div v-if="notice" class="toast" role="status">✓ {{ notice }}</div>
