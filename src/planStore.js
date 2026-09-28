@@ -33,7 +33,9 @@ export const planStore = Vue.observable({
       scale: 1,
       rotation: 0,
       z: 0,
-      specSize: 10,
+      // 默认规格 = SPEC_SIZES[0]（5cm）。字面量而非常量引用：本对象在
+      // 模块初始化时求值，SPEC_SIZES 定义在其后（避免 TDZ）。
+      specSize: 5,
     },
   ],
   // 设置页当前选中、正在编辑参数的板块。
@@ -66,21 +68,58 @@ export function planBoardsOrLayoutDefault() {
   return planStore.layoutDefault;
 }
 
-// y 是板块区域顶部中心：合成端板体顶相对锚点偏移 +5·s（makeShape 的
+// y 是板块区域顶部中心：合成端板体顶相对锚点偏移 +5·S（makeShape 的
 // rect top=255 相对画布中心 250），这里把它扣掉，使板体顶对齐框顶。
+// 缩放以「板顶」为不动点（板顶恒对齐锚点 by）：挂扣挂在板顶上方，
+// 顶不动点保证挂扣在任何规格下都完整可见；大规格板底向下延伸出画布
+// （大板撑满画面底部，视觉自然）。若以板体中心为不动点，板顶会上移
+// 挤压挂扣空间导致挂扣出画面。
+export const SPEC_SIZES = [
+  { value: 5, label: "5cm", scale: 1 },
+  { value: 10, label: "10cm", scale: 2 },
+  { value: 20, label: "20cm", scale: 4 },
+];
+export const SPEC_DEFAULT_SIZE = SPEC_SIZES[0].value;
+const SPEC_SCALE_MAP = new Map(
+  SPEC_SIZES.map((item) => [item.value, item.scale]),
+);
+// 安全 clamp：正常走查表，仅防脏数据（0/负数/异常大值）把画布撑爆。
+const SPEC_RATIO_MIN = 0.2;
+const SPEC_RATIO_MAX = 8;
+// 规格比例：由规格值查 SPEC_SIZES 表得 scale（5cm→1、10cm→2、20cm→4）。
+// 未登记的规格值兜底为默认规格的比例。render.js 复用同一函数，保证
+// 「板块放大」与「挂扣缩小」两端一致。
+export function specRatio(specSize) {
+  const v = Number(specSize);
+  if (SPEC_SCALE_MAP.has(v)) return SPEC_SCALE_MAP.get(v);
+  return SPEC_SCALE_MAP.get(SPEC_DEFAULT_SIZE);
+}
+// boardTransform(board, options)
+// 缩放以「板顶」为不动点（板顶恒对齐锚点 by）：切规格时板块向下生长，
+// 挂扣贴板顶孔位、位置恒定且净大小按 scale 缩小，任何规格下都完整可见
+// （板顶不动点是三规格中挂扣最靠画布内的情况）。若以板中心为不动点，
+// 大规格板顶会飞出画布，挂扣随之出画（10cm 只露一点、20cm 消失）。
 export function boardTransform(board, editorOptions) {
   const sceneX = Number(editorOptions && editorOptions.productX) || 0;
   const sceneY = Number(editorOptions && editorOptions.productY) || 0;
   const sceneScale =
     (Number(editorOptions && editorOptions.productScale) || 100) / 100;
-  const s = sceneScale * (Number(board.scale) || 1);
+  const boardScale = Number(board.scale) || 1;
+  const s = sceneScale * boardScale;
+  const rawSpec = Number.isFinite(
+    Number(editorOptions && editorOptions.specSize),
+  )
+    ? Number(editorOptions.specSize)
+    : Number(board.specSize);
+  const k = specRatio(rawSpec);
+  const S = s * k;
   // 注意不能用 `|| 默认值`：0 是合法坐标（画布左/上边缘）。
   const bx = Number.isFinite(Number(board.x)) ? Number(board.x) : 250;
   const by = Number.isFinite(Number(board.y)) ? Number(board.y) : 255;
   return {
     offsetX: Math.round(bx - 250 - sceneX),
-    offsetY: Math.round(by - 5 * s - 250 - sceneY),
-    scale: Number(board.scale) || 1,
+    offsetY: Math.round(by - 5 * S - 250 - sceneY),
+    scale: boardScale * k,
     rotation: Number(board.rotation) || 0,
     z: Number(board.z) || 0,
   };

@@ -326,8 +326,8 @@ export default {
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
     componentSize: { type: Number, default: 50 },
-    // 成品最长边的物理规格（cm），与左侧栏“规格”选择联动。
-    specSize: { type: Number, default: 10 },
+    // 成品最长边的物理规格（cm），与左侧栏“规格”选择联动。默认 5cm = SPEC_SIZES[0]。
+    specSize: { type: Number, default: 5 },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidthSetting: { type: Number, default: 300 },
     interfaceGuideHeightSetting: { type: Number, default: 52 },
@@ -373,6 +373,9 @@ export default {
       browserDpi: 96,
       previewRegenerationTimer: null,
       file: null,
+      // 上传图处理上限（长边像素）。超过则预缩到该值，与引擎内部上限一致，
+      // 避免巨图拖慢导入并保证 file/contentBlob/替换框架同坐标系。
+      maxProcessingSide: 2048,
       resultBlob: null,
       // Non-destructive artwork layer. The backing remains in contentBlob;
       // artworkMaskBlob reveals only the printable portion of this layer.
@@ -1823,7 +1826,7 @@ export default {
       this.fitArtworkToDimensionLimit();
     },
 
-    handleFileChange(event) {
+    async handleFileChange(event) {
       const file = event.target.files && event.target.files[0];
       if (!file) return;
 
@@ -1836,7 +1839,10 @@ export default {
         clearTimeout(this.previewRegenerationTimer);
         this.previewRegenerationTimer = null;
       }
-      this.file = file;
+      // 超大图先缩到处理上限以内，使 file / contentBlob / 替换框架处于同一
+      // 像素坐标系（否则引擎把 contentBlob 缩到 2048 而原 file 仍是 3000，
+      // 会触发“无法保留替换框架”报错），并减少后续所有处理的像素量。
+      this.file = await this.capFileToMaxSide(file, this.maxProcessingSide);
       this.activeFace = "front";
       this.faceAssets.front = null;
       this.faceAssets.back = null;
@@ -1910,6 +1916,49 @@ export default {
         offsetX: Math.round((contentWidth - sourceWidth) / 2),
         offsetY: Math.round((contentHeight - sourceHeight) / 2),
       };
+    },
+
+    async capFileToMaxSide(file, maxSide) {
+      if (!maxSide || maxSide <= 0 || typeof createImageBitmap === "undefined") {
+        return file;
+      }
+      try {
+        const bitmap = await createImageBitmap(file, {
+          premultiplyAlpha: "none",
+          colorSpaceConversion: "none",
+        });
+        const w = bitmap.width;
+        const h = bitmap.height;
+        if (Math.max(w, h) <= maxSide) {
+          bitmap.close();
+          return file;
+        }
+        const scale = maxSide / Math.max(w, h);
+        const targetW = Math.max(1, Math.round(w * scale));
+        const targetH = Math.max(1, Math.round(h * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const context = canvas.getContext("2d", { alpha: true });
+        context.imageSmoothingEnabled = true;
+        context.clearRect(0, 0, targetW, targetH);
+        context.drawImage(bitmap, 0, 0, w, h, 0, 0, targetW, targetH);
+        bitmap.close();
+        const blob = await new Promise((resolve, reject) =>
+          canvas.toBlob(
+            (result) =>
+              result ? resolve(result) : reject(new Error("图片缩放失败")),
+            "image/png",
+          ),
+        );
+        return new File([blob], file.name, {
+          type: "image/png",
+          lastModified: file.lastModified,
+        });
+      } catch (err) {
+        // 缩放失败则退回原图，不阻断导入。
+        return file;
+      }
     },
 
     getOpaqueBounds(image) {

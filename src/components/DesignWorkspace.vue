@@ -27,7 +27,7 @@
         :ref="'designer-' + board.id"
         :cutline-svg="board.cutlineSvg"
         :source-size="board.sourceSize || {}"
-        :spec-size="Number(specSize) || Number(board.specSize) || 10"
+        :spec-size="Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE"
         :dpi="dpi"
         :can-apply="Boolean(canApplyMap[board.id])"
         @apply-design="onApplyDesign()"
@@ -44,7 +44,7 @@
         :cut-line="cutLine"
         :dpi="dpi"
         :component-size="componentSize"
-        :spec-size="Number(specSize) || Number(board.specSize) || 10"
+        :spec-size="Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE"
         :interface-tab-enabled="interfaceTabEnabled"
         :interface-guide-width-setting="interfaceGuideWidth"
         :interface-guide-height-setting="interfaceGuideHeight"
@@ -62,6 +62,7 @@
 <script>
 import PatternDesigner from "./PatternDesigner/PatternDesigner.vue";
 import SvgCutlineDesigner from "./SvgCutlineDesigner.vue";
+import { SPEC_DEFAULT_SIZE } from "../planStore.js";
 
 export default {
   name: "DesignWorkspace",
@@ -75,7 +76,7 @@ export default {
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
     componentSize: { type: Number, default: 50 },
-    specSize: { type: Number, default: 10 },
+    specSize: { type: Number, default: SPEC_DEFAULT_SIZE },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidth: { type: Number, default: 300 },
     interfaceGuideHeight: { type: Number, default: 52 },
@@ -94,7 +95,7 @@ export default {
           scale: 1,
           rotation: 0,
           z: 0,
-          specSize: Number(this.specSize) || 10,
+          specSize: Number(this.specSize) || SPEC_DEFAULT_SIZE,
         },
       ],
       activeBoardId: "b1",

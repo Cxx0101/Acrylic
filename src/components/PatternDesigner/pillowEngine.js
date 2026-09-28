@@ -234,7 +234,11 @@ async function rgbaToPngBlob(rgba, width, height, dpi) {
     return new Blob([withDpiBytes], { type: 'image/png' });
 }
 
-async function decodeToRgba(file) {
+// 超大上传图在解码后先等比缩到 maxSide 以内，再进入 EDT / 连通域 / 4 次 PNG
+// 编码。这几步都是 O(pixelCount)，长边从 4000 降到 2048 可让整体耗时与编码
+// 体积下降约 3~4 倍，而亚克力吊牌（≤20cm）的轮廓精度完全够用。组件合并走
+// rawImage 路径，不经过此解码分支，不会被降采样影响精度。
+async function decodeToRgba(file, maxSide) {
     let bitmap;
     try {
         bitmap = await createImageBitmap(file, {
@@ -245,13 +249,35 @@ async function decodeToRgba(file) {
         bitmap = await createImageBitmap(file);
     }
 
-    const W = bitmap.width;
-    const H = bitmap.height;
+    let W = bitmap.width;
+    let H = bitmap.height;
+    const ctxOptions = { alpha: true, willReadFrequently: true };
+
+    if (maxSide && maxSide > 0 && Math.max(W, H) > maxSide) {
+        const scale = maxSide / Math.max(W, H);
+        const targetW = Math.max(1, Math.round(W * scale));
+        const targetH = Math.max(1, Math.round(H * scale));
+        const scaled = new OffscreenCanvas(targetW, targetH);
+        const scaledCtx = scaled.getContext('2d', ctxOptions);
+        if (!scaledCtx) {
+            bitmap.close();
+            throw new Error('无法创建 OffscreenCanvas 2D Context');
+        }
+        scaledCtx.imageSmoothingEnabled = true;
+        scaledCtx.clearRect(0, 0, targetW, targetH);
+        scaledCtx.drawImage(bitmap, 0, 0, W, H, 0, 0, targetW, targetH);
+        bitmap.close();
+        const imageData = scaledCtx.getImageData(0, 0, targetW, targetH);
+        return {
+            data: imageData.data,
+            width: targetW,
+            height: targetH,
+            channels: 4,
+        };
+    }
+
     const canvas = new OffscreenCanvas(W, H);
-    const ctx = canvas.getContext('2d', {
-        alpha: true,
-        willReadFrequently: true,
-    });
+    const ctx = canvas.getContext('2d', ctxOptions);
 
     if (!ctx) {
         bitmap.close();
@@ -353,7 +379,11 @@ async function runPillowEngine(file, options, jobId, rawImage = null, onProgress
         }
       }
     } else {
-        const decoded = await decodeToRgba(file);
+        // 超大上传图先缩到 maxSide 以内，降低后续 O(pixelCount) 计算与编码量。
+        const maxSide = Number.isFinite(Number(opt.maxSide))
+            ? Math.max(0, Number(opt.maxSide))
+            : 2048;
+        const decoded = await decodeToRgba(file, maxSide || undefined);
         data = decoded.data;
         W = decoded.width;
         H = decoded.height;

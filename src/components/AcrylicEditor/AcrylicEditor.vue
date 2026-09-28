@@ -7,6 +7,7 @@ import {
   composeScene,
   holeOffsetsFromPoint,
 } from "./render";
+import { SPEC_SIZES, SPEC_DEFAULT_SIZE } from "../../planStore.js";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
@@ -22,7 +23,8 @@ const DEFAULTS = {
   cutLine: 4,
   dpi: 300,
   stickerSize: 50,
-  specSize: 10,
+  // 默认规格 = SPEC_SIZES[0]（5cm）。
+  specSize: SPEC_DEFAULT_SIZE,
   interfaceTabEnabled: false,
   interfaceGuideWidth: 300,
   interfaceGuideHeight: 52,
@@ -126,7 +128,8 @@ export default {
       dimensions: "",
       o: Object.assign({}, DEFAULTS),
       materials: MATERIALS,
-      specSizes: [5, 10, 20],
+      // 规格表共享自 planStore（含 scale 放大倍数），克隆防组件间串改。
+      specSizes: SPEC_SIZES.map((item) => Object.assign({}, item)),
       scenePreset: "studio",
       exportSize: 1500,
       exportFormat: "png",
@@ -356,6 +359,8 @@ export default {
             blockO.holeY,
             blockO.holeShape,
             blockO.hook,
+            // 挂孔在 makeShape 内按规格比例缩放，规格变化必须重算 shape。
+            blockO.specSize,
           ].join("|");
           if (key !== board.shapeKey) {
             board.shape = makeShape(board.art, blockO);
@@ -974,7 +979,12 @@ export default {
         ↓ 导出效果图
       </button>
     </header>
-    <main :class="['editor-' + mode, { 'has-replace': mode === 'preview' && previewReplace }]">
+    <main
+      :class="[
+        'editor-' + mode,
+        { 'has-replace': mode === 'preview' && previewReplace },
+      ]"
+    >
       <aside>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
         <section v-if="!isSettings">
@@ -991,8 +1001,7 @@ export default {
             @dragover.prevent
             @drop.prevent="upload($event.dataTransfer.files[0])"
           >
-            <span class="upload-icon">＋</span
-            ><strong>选择透明图案</strong
+            <span class="upload-icon">＋</span><strong>选择透明图案</strong
             ><small>点击或拖入 PNG · 最大 20 MB</small>
           </button>
           <div class="file-info">
@@ -1005,19 +1014,17 @@ export default {
           <div class="spec-options">
             <button
               v-for="size in specSizes"
-              :key="size"
-              :class="['spec-option', { active: o.specSize === size }]"
-              :aria-pressed="o.specSize === size"
-              @click="o.specSize = size"
+              :key="size.value"
+              :class="['spec-option', { active: o.specSize === size.value }]"
+              :aria-pressed="o.specSize === size.value"
+              @click="o.specSize = size.value"
             >
-              {{ size }}cm
+              {{ size.label }}
             </button>
           </div>
         </section>
         <section>
-          <h2 v-if="!isSettings">
-            板材材质
-          </h2>
+          <h2 v-if="!isSettings">板材材质</h2>
           <div class="materials" v-if="!isSettings">
             <button
               v-for="m in materials"

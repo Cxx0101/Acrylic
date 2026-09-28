@@ -124,8 +124,8 @@ export default {
     },
     // 与 PatternDesigner 的「使用此图案」按钮同一语义。
     canApply: { type: Boolean, default: false },
-    // 板块规格尺寸（cm）：标注按刀线宽高比映射到该规格。
-    specSize: { type: Number, default: 10 },
+    // 板块规格尺寸（cm）：标注按刀线宽高比映射到该规格。默认 5cm = SPEC_SIZES[0]。
+    specSize: { type: Number, default: 5 },
     // 导出 DPI：下载图片的长边像素 = specSize / 2.54 × dpi。
     dpi: { type: Number, default: 300 },
   },

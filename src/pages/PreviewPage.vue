@@ -106,6 +106,7 @@ import {
   clearPlansCache,
   readPlanCache,
   migrateLegacyBoard,
+  SPEC_DEFAULT_SIZE,
 } from "../planStore.js";
 
 export default {
@@ -174,7 +175,7 @@ export default {
     },
     patternSpecSize() {
       const value = Number(this.editorOptions && this.editorOptions.specSize);
-      return Number.isFinite(value) ? value : 10;
+      return Number.isFinite(value) ? value : SPEC_DEFAULT_SIZE;
     },
     patternInterfaceTabEnabled() {
       return Boolean(

@@ -1,3 +1,4 @@
+import { specRatio } from "../../planStore.js";
 export const SIZE=500;
 const canvas=(w=SIZE,h=w)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
 export function loadImage(src, crossOrigin = 'anonymous'){return new Promise((resolve,reject)=>{const i=new Image();if(crossOrigin && !/^(data:|blob:)/i.test(src)) i.crossOrigin=crossOrigin;i.onload=()=>resolve(i);i.onerror=()=>reject(new Error('图片加载失败'));i.src=src})}
@@ -7,7 +8,10 @@ function expand(a,n,r){const d=new Float32Array(n*n);for(let i=0;i<d.length;i++)
 export function makeShape(art,o){const n=SIZE,c=canvas(),ctx=c.getContext('2d'),[sx,sy,sw,sh]=art.box;const scale=Math.min(200/sh,220/sw),w=sw*scale,h=sh*scale;const rect=[250-w/2,255,w,h];ctx.drawImage(art.img,sx,sy,sw,sh,...rect);if(art.shapeRegion){const rw=art.shapeRegion.naturalWidth||art.shapeRegion.width,rh=art.shapeRegion.naturalHeight||art.shapeRegion.height;ctx.drawImage(art.shapeRegion,rect[0]-sx*scale,rect[1]-sy*scale,rw*scale,rh*scale);}const data=ctx.getImageData(0,0,n,n).data;let a=new Uint8Array(n*n);for(let i=0;i<a.length;i++)a[i]=data[i*4+3]>50?1:0;fillHoles(a,n);if(!art.shapeRegion)a=expand(a,n,o.border);const mask=canvas(),m=mask.getContext('2d'),md=m.createImageData(n,n);for(let i=0;i<a.length;i++){md.data[i*4]=md.data[i*4+1]=md.data[i*4+2]=255;md.data[i*4+3]=a[i]*255}m.putImageData(md,0,0);if(o.smooth>0&&!art.shapeRegion){const temp=canvas(),tx=temp.getContext('2d');tx.filter=`blur(${o.smooth/3}px)`;tx.drawImage(mask,0,0);const td=tx.getImageData(0,0,n,n);for(let i=3;i<td.data.length;i+=4)td.data[i]=Math.round(Math.max(0,Math.min(1,(td.data[i]-75)/105))*255);m.putImageData(td,0,0)}
 const hx=250+o.holeX,hy=240+o.holeY; // Connect the hanging component to the nearest real silhouette pixel.
 let nearest=null,best=Infinity;const raw=m.getImageData(0,0,n,n).data;for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(raw[(y*n+x)*4+3]>128){const dist=(x-hx)**2+(y-hy)**2;if(dist<best){best=dist;nearest=[x,y]}}
-if(o.hook&&nearest){const outer=14,inner=4.5;m.strokeStyle='white';m.lineWidth=22;m.lineCap='round';m.beginPath();m.moveTo(hx,hy);m.lineTo(...nearest);m.stroke();m.fillStyle='white';if(o.holeShape==='square'){m.lineWidth=10;m.lineJoin='round';m.beginPath();m.moveTo(hx-outer,hy+outer);m.lineTo(hx-outer,hy);m.arc(hx,hy,outer,Math.PI,0);m.lineTo(hx+outer,hy+outer);m.stroke();}else{m.beginPath();m.arc(hx,hy,outer,0,Math.PI*2);m.fill();}m.globalCompositeOperation='destination-out';m.beginPath();m.arc(hx,hy,inner,0,Math.PI*2);m.fill();m.globalCompositeOperation='source-over'}return {mask,rect,hx,hy};}
+// 挂孔随板体缩放（孔是板上的洞，位置必须与板轮廓耦合）；大小按规格比例
+// 的平方缩小（1/k²）：产品层随规格放大 k 倍后，孔净大小 = 14/k（按 scale
+// 值真实缩小），与挂件（235/k）保持同一比例。
+if(o.hook&&nearest){const q=(specRatio(o.specSize))**2,outer=14/q,inner=4.5/q;m.strokeStyle='white';m.lineWidth=22/q;m.lineCap='round';m.beginPath();m.moveTo(hx,hy);m.lineTo(...nearest);m.stroke();m.fillStyle='white';if(o.holeShape==='square'){m.lineWidth=10/q;m.lineJoin='round';m.beginPath();m.moveTo(hx-outer,hy+outer);m.lineTo(hx-outer,hy);m.arc(hx,hy,outer,Math.PI,0);m.lineTo(hx+outer,hy+outer);m.stroke();}else{m.beginPath();m.arc(hx,hy,outer,0,Math.PI*2);m.fill();}m.globalCompositeOperation='destination-out';m.beginPath();m.arc(hx,hy,inner,0,Math.PI*2);m.fill();m.globalCompositeOperation='source-over'}return {mask,rect,hx,hy};}
 // Maps a point expressed in the raw artwork pixel space (e.g. the component
 // position picked on the design canvas) onto the hole offsets consumed by
 // makeShape. Must stay in sync with the rect/scale math inside makeShape.
@@ -67,7 +71,10 @@ s.globalAlpha=Math.min(1,shine*1.5);s.drawImage(assets.reflection,left,top,w,h);
 const g=s.createLinearGradient(left,top,left+w,top+h*.45);g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.25,`rgba(255,255,255,${shine*.12})`);g.addColorStop(.36,`rgba(255,255,255,${shine*(o.material==='frost'?.20:.60)})`);g.addColorStop(.43,`rgba(255,255,255,${shine*.08})`);g.addColorStop(.72,'rgba(255,255,255,0)');g.addColorStop(.77,`rgba(255,255,255,${shine*.22})`);g.addColorStop(.83,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(255,255,255,0)');s.fillStyle=g;s.fillRect(0,0,n,n);
 // Print remains opaque; reflections over the print are attenuated.
 s.globalCompositeOperation='destination-out';s.globalAlpha=.72;s.drawImage(art.img,...art.box,...rect);s.globalAlpha=1;s.globalCompositeOperation='source-over';clip(sheen,mask);p.drawImage(sheen,0,0);
-if(o.hook){const hh=235,hw=hh*assets.hook.width/assets.hook.height;p.drawImage(assets.hook,hx-hw/2,hy-hh*.885,hw,hh)}
+// 挂件贴孔（孔随板走，位置与板体耦合）；大小按 1/k² 绘制：产品层随规格
+// 放大 k 倍后净大小 = 235/k，即挂扣在最终效果图中按 scale 值真实缩小
+// （5cm→235、10cm→117.5、20cm→58.75 @500空间）。
+if(o.hook){const q=(specRatio(o.specSize))**2,hh=235/q,hw=hh*assets.hook.width/assets.hook.height;p.drawImage(assets.hook,hx-hw/2,hy-hh*.885,hw,hh)}
 return product;
 }
 // Merges a plate's own placement (offset/rotation/scale/z) with the shared

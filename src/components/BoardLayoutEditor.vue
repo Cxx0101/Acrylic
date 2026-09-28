@@ -372,7 +372,7 @@ export default {
         scale: 1,
         rotation: 0,
         z: this.boards.length,
-        specSize: 10,
+        specSize: 5, // 默认规格 = SPEC_SIZES[0]（5cm）
       };
       this.boards.push(board);
       this.selectedId = board.id;

@@ -4,9 +4,36 @@ function makeJobId() {
   return `pillow_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+// 把引擎原样返回的结果映射成对外契约一致的字段。
+function mapResult(result) {
+  return {
+    blob: result.mergedBlob,
+    contentBlob: result.contentBlob,
+    backingBlob: result.backingBlob,
+    artworkMaskBlob: result.artworkMaskBlob,
+    pathBlob: result.pathBlob,
+    width: result.width,
+    height: result.height,
+    dpi: result.dpi,
+    sourceDpi: result.sourceDpi,
+    slot: result.slot,
+    segment: result.segment,
+    bounds: result.bounds,
+  };
+}
+
+function toRawImage(file) {
+  return {
+    data: file.data,
+    artworkData: file.artworkData || null,
+    width: file.width,
+    height: file.height,
+  };
+}
+
 /**
- * 主线程版 pillow 轮廓处理（不再使用 Web Worker）。
- * 逻辑与 public/workers/pillow.worker.js 完全一致——算法在 pillowEngine.js。
+ * 轮廓处理：在主线程直接运行完整引擎（EDT、连通域、4 次 PNG 编码）。
+ * 如需避免导入时页面冻结，可在调用方改为 Web Worker 包裹 runPillowEngine。
  *
  * 入参可接受 File/Blob 或原始 RGBA 图像描述符
  * { data: Uint8ClampedArray, width, height, artworkData? }。
@@ -31,38 +58,14 @@ export function buildPillowSheetContour(file, options = {}, config = {}) {
     return Promise.reject(new Error("该方法只能在浏览器端运行"));
   }
 
-  // 原 Worker 路径下的能力检测（OffscreenCanvas / createImageBitmap）交由
-  // 引擎内部抛出等价错误，这里不再依赖 Worker。
   const onProgress =
     typeof config.onProgress === "function" ? config.onProgress : null;
   const jobId = makeJobId();
 
-  // 主线程直接调用引擎，复用与 Worker 完全相同的算法实现。
-  const rawImage = isRawImage
-    ? {
-        data: file.data,
-        artworkData: file.artworkData || null,
-        width: file.width,
-        height: file.height,
-      }
-    : null;
+  const rawImage = isRawImage ? toRawImage(file) : null;
   const input = isRawImage ? null : file;
-
   return runPillowEngine(input, options, jobId, rawImage, onProgress).then(
-    (result) => ({
-      blob: result.mergedBlob,
-      contentBlob: result.contentBlob,
-      backingBlob: result.backingBlob,
-      artworkMaskBlob: result.artworkMaskBlob,
-      pathBlob: result.pathBlob,
-      width: result.width,
-      height: result.height,
-      dpi: result.dpi,
-      sourceDpi: result.sourceDpi,
-      slot: result.slot,
-      segment: result.segment,
-      bounds: result.bounds,
-    }),
+    mapResult,
   );
 }
 
