@@ -43,7 +43,7 @@
         ref="designWorkspace"
         slot="design-canvas"
         embedded
-        :plan-boards="plans.length ? unionBoards : null"
+        :plan-boards="unionBoards.length ? unionBoards : null"
         :white-border="patternWhiteBorder"
         :cut-line="patternCutLine"
         :dpi="patternDpi"
@@ -96,27 +96,12 @@ import AcrylicEditor from "../home/AcrylicEditor";
 import AppHeader from "../home/AppHeader.vue";
 import DesignWorkspace from "../home/DesignWorkspace.vue";
 import { specRatio, SPEC_DEFAULT_SIZE } from "../utils/home/render";
+import { sharedState } from "../sharedState.js";
 
 // ---- 板块工具（纯函数，随首页域就近维护）----
 // 板块跨方案匹配标识：优先显式 tag，兜底板块名（兼容旧 JSON）。
 function boardTag(board) {
   return (board && (board.tag || board.name)) || "";
-}
-// 板块默认锚点（顶部中心）：x 水平居中，y = 250 − 框高 220/2，垂直居中。
-const BOARD_DEFAULT_X = 250;
-const BOARD_DEFAULT_Y = 140;
-// 旧版默认锚点（y=255 使占位框偏下方），恢复缓存时迁移到居中位置。
-const LEGACY_DEFAULT_Y = 255;
-// 未手动挪过位的旧默认板块归位到垂直居中（幂等）。
-function migrateLegacyBoard(board) {
-  if (
-    board &&
-    Number(board.x) === BOARD_DEFAULT_X &&
-    Number(board.y) === LEGACY_DEFAULT_Y
-  ) {
-    board.y = BOARD_DEFAULT_Y;
-  }
-  return board;
 }
 // 效果图板块变换：板顶不动点 + 规格比例缩放。缩放以「板顶」为不动点
 // （板顶恒对齐锚点 by）：挂扣贴板顶孔位、任何规格下都完整可见。
@@ -160,33 +145,50 @@ export default {
       boardUrls: [],
       distributing: false,
       effectsSyncTimer: null,
+      // 多效果图方案：{ id, name, config, imageUrl, imageBlob, generatedAt }。
+      // 仅运行时数据，不持久化；后续将改由后端接口提供。
+      plans: [],
+      // 当前激活（主画布实时预览）的方案 id。
+      activePlanId: null,
+      // 设计完成状态：tag -> { blob, hole, shapeRegion, filename }（仅运行时）。
+      designStates: {},
       // 编辑器每次 setBoards 重初始化都会再发 ready，方案恢复只执行一次。
       restored: false,
     };
   },
   computed: {
-    plans() {
-      return this.$store.state.plans;
-    },
     activePlan() {
-      return this.$store.getters.activePlan;
+      return (
+        this.plans.find((p) => p.id === this.activePlanId) ||
+        this.plans[0] ||
+        null
+      );
     },
-    // 设计画布板块 = 多方案板块并集（按标识去重，首个出现者为准）。
+    // 设计画布板块：优先设置页布局（跨页共享），否则多方案板块并集
+    // （按标识去重，首个出现者为准）。
     unionBoards() {
       const seen = new Set();
       const out = [];
-      for (const plan of this.plans) {
-        for (const board of plan.config.boards || []) {
-          const tag = boardTag(board);
-          if (!tag || seen.has(tag)) continue;
-          seen.add(tag);
-          out.push(Object.assign({}, board, { tag }));
+      const source = sharedState.planBoards.length
+        ? sharedState.planBoards
+        : this.plans;
+      const collect = (board) => {
+        const tag = boardTag(board);
+        if (!tag || seen.has(tag)) return;
+        seen.add(tag);
+        out.push(Object.assign({}, board, { tag }));
+      };
+      if (Array.isArray(source) && source.length && source[0].config) {
+        for (const plan of source) {
+          for (const board of plan.config.boards || []) collect(board);
         }
+      } else {
+        for (const board of source || []) collect(board);
       }
       return out;
     },
     sharedOptions() {
-      return this.$store.state.sharedOptions;
+      return sharedState.sharedOptions;
     },
     patternWhiteBorder() {
       const border = Number(this.editorOptions && this.editorOptions.border);
@@ -277,7 +279,7 @@ export default {
     },
     async syncPlanOptionsAndRerender() {
       if (this.distributing) return;
-      if (!this.$store.state.plans.length) return;
+      if (!this.plans.length) return;
       const editor = this.$refs.editor;
       if (!editor || !editor.createConfig || !this.editorOptions) return;
       const options = this.editorOptions;
@@ -293,34 +295,31 @@ export default {
             })
           : "";
       let dirty = false;
-      this.$store.state.plans.forEach((plan) => {
+      this.plans.forEach((plan) => {
         if (
           JSON.stringify(plan.config.options) !== JSON.stringify(options)
         ) {
-          this.$store.commit("updatePlanOptions", { plan, options });
+          plan.config.options = Object.assign({}, options);
           dirty = true;
         }
         if (hook) {
           const prev = plan.config.assets && plan.config.assets.hook;
           if (hookKey(prev) !== hookKey(hook)) {
-            this.$store.commit("updatePlanHook", { plan, hook });
+            plan.config.assets = Object.assign({}, plan.config.assets, {
+              hook,
+            });
             dirty = true;
           }
         }
       });
-      // config 有变化时立即持久化（imageUrl 等运行时数据不落缓存）。
-      if (dirty) this.$store.commit("savePlans");
       if (!dirty) return;
       await this.distributeEffects();
     },
     syncSharedOptions(options) {
       if (!options) return;
-      if (
-        JSON.stringify(this.$store.state.sharedOptions) ===
-        JSON.stringify(options)
-      )
+      if (JSON.stringify(sharedState.sharedOptions) === JSON.stringify(options))
         return;
-      this.$store.commit("setSharedOptions", options);
+      sharedState.sharedOptions = options;
     },
     onError(error) {
       console.error(error);
@@ -355,7 +354,7 @@ export default {
             imageBlob: null,
             generatedAt: 0,
           };
-          this.$store.commit("addPlan", plan);
+          this.plans.push(plan);
           if (!firstNew) firstNew = plan;
         } catch (e) {
           console.error("导入方案失败", e);
@@ -365,7 +364,7 @@ export default {
     },
     async activatePlan(plan) {
       if (!plan) return;
-      this.$store.commit("setActivePlanId", plan.id);
+      this.activePlanId = plan.id;
       const editor = this.$refs.editor;
       if (!editor || !editor.loadConfig) return;
       try {
@@ -381,14 +380,14 @@ export default {
       if (!editor || !editor.setBoards) return;
       this.revokeBoardUrls();
       const matched = (plan.config.boards || []).filter(
-        (p) => this.$store.state.designStates[boardTag(p)],
+        (p) => this.designStates[boardTag(p)],
       );
       if (!matched.length) {
         editor.setBoards([]);
         return;
       }
       const list = matched.map((p) => {
-        const state = this.$store.state.designStates[boardTag(p)];
+        const state = this.designStates[boardTag(p)];
         const url = URL.createObjectURL(state.blob);
         this.boardUrls.push(url);
         return {
@@ -405,19 +404,16 @@ export default {
     async applyDesign({ boards }) {
       if (!Array.isArray(boards) || !boards.length) return;
       boards.forEach((b) => {
-        this.$store.commit("setDesignState", {
-          tag: b.tag,
-          value: {
-            blob: b.blob,
-            hole: b.hole || null,
-            shapeRegion: b.shapeRegion || null,
-            filename: b.filename || b.tag + ".png",
-          },
+        this.$set(this.designStates, b.tag, {
+          blob: b.blob,
+          hole: b.hole || null,
+          shapeRegion: b.shapeRegion || null,
+          filename: b.filename || b.tag + ".png",
         });
       });
       // 未导入方案时自动建一个「默认方案」：以当前设计板块为布局，
       // 保证「生成效果图」在没有导入 JSON 时也有产出落点。
-      if (!this.$store.state.plans.length) {
+      if (!this.plans.length) {
         const plan = {
           id: "p-auto-" + Date.now().toString(36),
           name: "默认方案",
@@ -441,8 +437,8 @@ export default {
           imageBlob: null,
           generatedAt: 0,
         };
-        this.$store.commit("addPlan", plan);
-        this.$store.commit("setActivePlanId", plan.id);
+        this.plans.push(plan);
+        this.activePlanId = plan.id;
       }
       await this.distributeEffects();
     },
@@ -469,13 +465,13 @@ export default {
     async renderPlanEffect(plan) {
       const editor = this.$refs.editor;
       const matched = (plan.config.boards || []).filter(
-        (p) => this.$store.state.designStates[boardTag(p)],
+        (p) => this.designStates[boardTag(p)],
       );
       if (!matched.length) return;
       await editor.loadConfig(plan.config);
       this.revokeBoardUrls();
       const list = matched.map((p) => {
-        const state = this.$store.state.designStates[boardTag(p)];
+        const state = this.designStates[boardTag(p)];
         const url = URL.createObjectURL(state.blob);
         this.boardUrls.push(url);
         return {
@@ -512,58 +508,18 @@ export default {
       this.boardUrls.forEach((url) => URL.revokeObjectURL(url));
       this.boardUrls = [];
     },
-    // 页面加载时恢复上次导入的方案（切页/刷新不丢）。
+    // 页面加载时恢复方案数据。本地缓存已移除：后续在此处调用后端接口
+    // 拉取方案列表（拉到后 push 进 this.plans 并激活），当前为空实现。
     async restorePlan() {
-      try {
-        const cachedPlans = await this.$store.dispatch("readPlansCache");
-        if (cachedPlans && cachedPlans.length) {
-          cachedPlans.forEach((p) => {
-            if (!Array.isArray(p.config.boards)) return;
-            p.config.boards.forEach((b) => {
-              b.tag = b.tag || b.name;
-              migrateLegacyBoard(b);
-            });
-            this.$store.commit("addPlan", {
-              id: p.id,
-              name: p.name,
-              config: p.config,
-              imageUrl: "",
-              imageBlob: null,
-              generatedAt: 0,
-            });
-          });
-        } else {
-          const config = await this.$store.dispatch("readPlanCache");
-          if (
-            config &&
-            Array.isArray(config.boards) &&
-            config.boards.length &&
-            !this.$store.state.plans.length
-          ) {
-            config.boards.forEach((b) => {
-              b.tag = b.tag || b.name;
-              migrateLegacyBoard(b);
-            });
-            this.$store.commit("addPlan", {
-              id: "p-legacy",
-              name: "方案",
-              config,
-              imageUrl: "",
-              imageBlob: null,
-              generatedAt: 0,
-            });
-          }
-        }
-        if (this.$store.state.plans.length) {
-          const first = this.$store.getters.activePlan || this.plans[0];
-          this.activatePlan(first);
-        }
-      } catch (e) {
-        console.error("方案缓存恢复失败", e);
+      if (this.plans.length) {
+        const first = this.activePlan || this.plans[0];
+        this.activatePlan(first);
       }
     },
     clearPlan() {
-      this.$store.dispatch("clearPlans");
+      this.plans = [];
+      this.activePlanId = null;
+      this.designStates = {};
       this.revokeBoardUrls();
       if (this.$refs.editor && this.$refs.editor.setBoards) {
         this.$refs.editor.setBoards([]);

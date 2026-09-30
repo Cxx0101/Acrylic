@@ -108,12 +108,6 @@ export default {
         DEFAULT_HOOK_OPTIONS.map((item) => Object.assign({}, item)),
     },
   },
-  computed: {
-    // 自定义材质预设：数据与持久化都在 store（插件写本地缓存），组件只读。
-    customPresets() {
-      return this.$store.state.materialPresets;
-    },
-  },
   data() {
     return {
       ready: false,
@@ -192,8 +186,6 @@ export default {
       this.hookName = builtin.label;
     }
     this.setOptions(this.initialOptions);
-    // 自定义材质预设：统一走 Vuex，持久化由 store 插件负责。
-    this.$store.dispatch("loadMaterialPresets");
   },
   mounted() {
     this.initialize();
@@ -513,24 +505,6 @@ export default {
         if (key === "holeShape" && !["ring", "square"].includes(value)) return;
         this.o[key] = value;
       });
-    },
-    // 应用自定义材质预设：材质类型全局生效，其余参数落到当前编辑板块。
-    applyMaterialPreset(item) {
-      if (!item || !item.options) return;
-      const rest = Object.assign({}, item.options);
-      if (rest.material) {
-        this.setOptions({ material: rest.material });
-        delete rest.material;
-      }
-      Object.keys(rest).forEach((k) => {
-        if (rest[k] !== undefined) this.$set(this.boardEditingO, k, rest[k]);
-      });
-    },
-    // 删除预设：更新 store，持久化由插件自动落本地缓存。
-    removeMaterialPreset(index) {
-      const list = this.$store.state.materialPresets.slice();
-      list.splice(index, 1);
-      this.$store.commit("setMaterialPresets", list);
     },
     async uploadAsset(name, file) {
       if (!file) return;
@@ -941,15 +915,6 @@ export default {
                 v-model.number="boardEditingO.shine"
             /></label>
           </details>
-          <div v-if="customPresets.length" class="preset-list">
-            <span v-for="(preset, index) in customPresets" :key="preset.name"
-              ><button @click="applyMaterialPreset(preset)">
-                {{ preset.name }}</button
-              ><button title="删除预设" @click="removeMaterialPreset(index)">
-                ×
-              </button></span
-            >
-          </div>
         </section>
         <section>
           <h2>
