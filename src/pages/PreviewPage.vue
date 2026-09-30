@@ -95,17 +95,56 @@
 import AcrylicEditor from "../home/AcrylicEditor";
 import AppHeader from "../home/AppHeader.vue";
 import DesignWorkspace from "../home/DesignWorkspace.vue";
-import {
-  planStore,
-  boardTag,
-  boardTransform,
-  readPlansCache,
-  writePlansCache,
-  clearPlansCache,
-  readPlanCache,
-  migrateLegacyBoard,
-  SPEC_DEFAULT_SIZE,
-} from "../home/planStore.js";
+import { specRatio, SPEC_DEFAULT_SIZE } from "../utils/home/render";
+
+// ---- 板块工具（纯函数，随首页域就近维护）----
+// 板块跨方案匹配标识：优先显式 tag，兜底板块名（兼容旧 JSON）。
+function boardTag(board) {
+  return (board && (board.tag || board.name)) || "";
+}
+// 板块默认锚点（顶部中心）：x 水平居中，y = 250 − 框高 220/2，垂直居中。
+const BOARD_DEFAULT_X = 250;
+const BOARD_DEFAULT_Y = 140;
+// 旧版默认锚点（y=255 使占位框偏下方），恢复缓存时迁移到居中位置。
+const LEGACY_DEFAULT_Y = 255;
+// 未手动挪过位的旧默认板块归位到垂直居中（幂等）。
+function migrateLegacyBoard(board) {
+  if (
+    board &&
+    Number(board.x) === BOARD_DEFAULT_X &&
+    Number(board.y) === LEGACY_DEFAULT_Y
+  ) {
+    board.y = BOARD_DEFAULT_Y;
+  }
+  return board;
+}
+// 效果图板块变换：板顶不动点 + 规格比例缩放。缩放以「板顶」为不动点
+// （板顶恒对齐锚点 by）：挂扣贴板顶孔位、任何规格下都完整可见。
+function boardTransform(board, editorOptions) {
+  const sceneX = Number(editorOptions && editorOptions.productX) || 0;
+  const sceneY = Number(editorOptions && editorOptions.productY) || 0;
+  const sceneScale =
+    (Number(editorOptions && editorOptions.productScale) || 100) / 100;
+  const boardScale = Number(board.scale) || 1;
+  const s = sceneScale * boardScale;
+  const rawSpec = Number.isFinite(
+    Number(editorOptions && editorOptions.specSize),
+  )
+    ? Number(editorOptions.specSize)
+    : Number(board.specSize);
+  const k = specRatio(rawSpec);
+  const S = s * k;
+  // 注意不能用 `|| 默认值`：0 是合法坐标（画布左/上边缘）。
+  const bx = Number.isFinite(Number(board.x)) ? Number(board.x) : 250;
+  const by = Number.isFinite(Number(board.y)) ? Number(board.y) : 255;
+  return {
+    offsetX: Math.round(bx - 250 - sceneX),
+    offsetY: Math.round(by - 5 * S - 250 - sceneY),
+    scale: boardScale * k,
+    rotation: Number(board.rotation) || 0,
+    z: Number(board.z) || 0,
+  };
+}
 
 export default {
   name: "PreviewPage",
@@ -127,14 +166,10 @@ export default {
   },
   computed: {
     plans() {
-      return planStore.plans;
+      return this.$store.state.plans;
     },
     activePlan() {
-      return (
-        this.plans.find((p) => p.id === planStore.activePlanId) ||
-        this.plans[0] ||
-        null
-      );
+      return this.$store.getters.activePlan;
     },
     // 设计画布板块 = 多方案板块并集（按标识去重，首个出现者为准）。
     unionBoards() {
@@ -151,7 +186,7 @@ export default {
       return out;
     },
     sharedOptions() {
-      return planStore.sharedOptions;
+      return this.$store.state.sharedOptions;
     },
     patternWhiteBorder() {
       const border = Number(this.editorOptions && this.editorOptions.border);
@@ -242,7 +277,7 @@ export default {
     },
     async syncPlanOptionsAndRerender() {
       if (this.distributing) return;
-      if (!planStore.plans.length) return;
+      if (!this.$store.state.plans.length) return;
       const editor = this.$refs.editor;
       if (!editor || !editor.createConfig || !this.editorOptions) return;
       const options = this.editorOptions;
@@ -258,31 +293,34 @@ export default {
             })
           : "";
       let dirty = false;
-      planStore.plans.forEach((plan) => {
+      this.$store.state.plans.forEach((plan) => {
         if (
           JSON.stringify(plan.config.options) !== JSON.stringify(options)
         ) {
-          plan.config.options = Object.assign({}, options);
+          this.$store.commit("updatePlanOptions", { plan, options });
           dirty = true;
         }
         if (hook) {
           const prev = plan.config.assets && plan.config.assets.hook;
           if (hookKey(prev) !== hookKey(hook)) {
-            plan.config.assets = Object.assign({}, plan.config.assets, {
-              hook,
-            });
+            this.$store.commit("updatePlanHook", { plan, hook });
             dirty = true;
           }
         }
       });
+      // config 有变化时立即持久化（imageUrl 等运行时数据不落缓存）。
+      if (dirty) this.$store.commit("savePlans");
       if (!dirty) return;
       await this.distributeEffects();
     },
     syncSharedOptions(options) {
       if (!options) return;
-      if (JSON.stringify(planStore.sharedOptions) === JSON.stringify(options))
+      if (
+        JSON.stringify(this.$store.state.sharedOptions) ===
+        JSON.stringify(options)
+      )
         return;
-      planStore.sharedOptions = options;
+      this.$store.commit("setSharedOptions", options);
     },
     onError(error) {
       console.error(error);
@@ -317,18 +355,17 @@ export default {
             imageBlob: null,
             generatedAt: 0,
           };
-          planStore.plans.push(plan);
+          this.$store.commit("addPlan", plan);
           if (!firstNew) firstNew = plan;
         } catch (e) {
           console.error("导入方案失败", e);
         }
       }
-      writePlansCache(planStore.plans);
       if (firstNew) await this.activatePlan(firstNew);
     },
     async activatePlan(plan) {
       if (!plan) return;
-      planStore.activePlanId = plan.id;
+      this.$store.commit("setActivePlanId", plan.id);
       const editor = this.$refs.editor;
       if (!editor || !editor.loadConfig) return;
       try {
@@ -344,14 +381,14 @@ export default {
       if (!editor || !editor.setBoards) return;
       this.revokeBoardUrls();
       const matched = (plan.config.boards || []).filter(
-        (p) => planStore.designStates[boardTag(p)],
+        (p) => this.$store.state.designStates[boardTag(p)],
       );
       if (!matched.length) {
         editor.setBoards([]);
         return;
       }
       const list = matched.map((p) => {
-        const state = planStore.designStates[boardTag(p)];
+        const state = this.$store.state.designStates[boardTag(p)];
         const url = URL.createObjectURL(state.blob);
         this.boardUrls.push(url);
         return {
@@ -368,17 +405,20 @@ export default {
     async applyDesign({ boards }) {
       if (!Array.isArray(boards) || !boards.length) return;
       boards.forEach((b) => {
-        planStore.designStates[b.tag] = {
-          blob: b.blob,
-          hole: b.hole || null,
-          shapeRegion: b.shapeRegion || null,
-          filename: b.filename || b.tag + ".png",
-        };
+        this.$store.commit("setDesignState", {
+          tag: b.tag,
+          value: {
+            blob: b.blob,
+            hole: b.hole || null,
+            shapeRegion: b.shapeRegion || null,
+            filename: b.filename || b.tag + ".png",
+          },
+        });
       });
       // 未导入方案时自动建一个「默认方案」：以当前设计板块为布局，
       // 保证「生成效果图」在没有导入 JSON 时也有产出落点。
-      if (!planStore.plans.length) {
-        planStore.plans.push({
+      if (!this.$store.state.plans.length) {
+        const plan = {
           id: "p-auto-" + Date.now().toString(36),
           name: "默认方案",
           config: {
@@ -400,8 +440,9 @@ export default {
           imageUrl: "",
           imageBlob: null,
           generatedAt: 0,
-        });
-        planStore.activePlanId = planStore.plans[0].id;
+        };
+        this.$store.commit("addPlan", plan);
+        this.$store.commit("setActivePlanId", plan.id);
       }
       await this.distributeEffects();
     },
@@ -428,13 +469,13 @@ export default {
     async renderPlanEffect(plan) {
       const editor = this.$refs.editor;
       const matched = (plan.config.boards || []).filter(
-        (p) => planStore.designStates[boardTag(p)],
+        (p) => this.$store.state.designStates[boardTag(p)],
       );
       if (!matched.length) return;
       await editor.loadConfig(plan.config);
       this.revokeBoardUrls();
       const list = matched.map((p) => {
-        const state = planStore.designStates[boardTag(p)];
+        const state = this.$store.state.designStates[boardTag(p)];
         const url = URL.createObjectURL(state.blob);
         this.boardUrls.push(url);
         return {
@@ -452,11 +493,6 @@ export default {
       plan.imageUrl = URL.createObjectURL(blob);
       plan.imageBlob = blob;
       plan.generatedAt = Date.now();
-      this.writePlansCacheSafe();
-    },
-    writePlansCacheSafe() {
-      // 生成结果不持久化，但方案列表有变化时同步一次缓存。
-      writePlansCache(planStore.plans);
     },
     waitForEditor() {
       return new Promise((resolve) => {
@@ -477,9 +513,9 @@ export default {
       this.boardUrls = [];
     },
     // 页面加载时恢复上次导入的方案（切页/刷新不丢）。
-    restorePlan() {
+    async restorePlan() {
       try {
-        const cachedPlans = readPlansCache();
+        const cachedPlans = await this.$store.dispatch("readPlansCache");
         if (cachedPlans && cachedPlans.length) {
           cachedPlans.forEach((p) => {
             if (!Array.isArray(p.config.boards)) return;
@@ -487,7 +523,7 @@ export default {
               b.tag = b.tag || b.name;
               migrateLegacyBoard(b);
             });
-            planStore.plans.push({
+            this.$store.commit("addPlan", {
               id: p.id,
               name: p.name,
               config: p.config,
@@ -497,18 +533,18 @@ export default {
             });
           });
         } else {
-          const config = readPlanCache();
+          const config = await this.$store.dispatch("readPlanCache");
           if (
             config &&
             Array.isArray(config.boards) &&
             config.boards.length &&
-            !planStore.plans.length
+            !this.$store.state.plans.length
           ) {
             config.boards.forEach((b) => {
               b.tag = b.tag || b.name;
               migrateLegacyBoard(b);
             });
-            planStore.plans.push({
+            this.$store.commit("addPlan", {
               id: "p-legacy",
               name: "方案",
               config,
@@ -518,10 +554,8 @@ export default {
             });
           }
         }
-        if (planStore.plans.length) {
-          const first =
-            this.plans.find((p) => p.id === planStore.activePlanId) ||
-            this.plans[0];
+        if (this.$store.state.plans.length) {
+          const first = this.$store.getters.activePlan || this.plans[0];
           this.activatePlan(first);
         }
       } catch (e) {
@@ -529,10 +563,7 @@ export default {
       }
     },
     clearPlan() {
-      planStore.plans = [];
-      planStore.activePlanId = null;
-      planStore.designStates = {};
-      clearPlansCache();
+      this.$store.dispatch("clearPlans");
       this.revokeBoardUrls();
       if (this.$refs.editor && this.$refs.editor.setBoards) {
         this.$refs.editor.setBoards([]);

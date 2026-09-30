@@ -6,8 +6,8 @@ import {
   render,
   composeScene,
   holeOffsetsFromPoint,
-} from "./render";
-import { SPEC_SIZES, SPEC_DEFAULT_SIZE } from "../planStore.js";
+} from "../../utils/home/render";
+import { SPEC_SIZES, SPEC_DEFAULT_SIZE } from "../../utils/home/render";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
@@ -127,7 +127,7 @@ export default {
       dimensions: "",
       o: Object.assign({}, DEFAULTS),
       materials: MATERIALS,
-      // 规格表共享自 planStore（含 scale 放大倍数），克隆防组件间串改。
+      // 规格表来自 render.js（含 scale 放大倍数），克隆防组件间串改。
       specSizes: SPEC_SIZES.map((item) => Object.assign({}, item)),
       scenePreset: "studio",
       exportSize: 1500,

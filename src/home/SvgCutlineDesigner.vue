@@ -103,8 +103,8 @@
 // artworkBlob / processing / file / getDesignShapeRegion / getDesignHole /
 // handleFileChange，使合成管线无需感知板块类型。
 import { fabric } from "fabric";
-import { downloadBlob } from "./PatternDesigner/pillowContour";
-import { cropResizeToPngBlob } from "./downloadImage";
+import { downloadBlob } from "../utils/home/pillowContour";
+import { cropResizeToPngBlob } from "../utils/home/downloadImage";
 
 const CANVAS_SIZE = 600;
 const STAGE_PADDING = 30;

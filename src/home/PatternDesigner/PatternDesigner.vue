@@ -257,7 +257,7 @@
   </div>
 </template>
 <script>
-import { buildPillowSheetContour, downloadBlob } from "./pillowContour";
+import { buildPillowSheetContour, downloadBlob } from "../../utils/home/pillowContour";
 import { fabric } from "fabric";
 import {
   getMaximumDiameterPair,
@@ -265,7 +265,7 @@ import {
   insetMaskPixels,
   mergeLocalContourPixels,
   selectSmoothContourPoint,
-} from "./localContour";
+} from "../../utils/home/localContour";
 
 function buildStickerSvg(pattern, cutLine, renderedSize) {
   const size = Math.max(1, Number(renderedSize) || 1);

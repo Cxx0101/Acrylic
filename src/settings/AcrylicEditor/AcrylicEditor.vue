@@ -6,8 +6,8 @@ import {
   render,
   composeScene,
   holeOffsetsFromPoint,
-} from "./render";
-import { SPEC_DEFAULT_SIZE } from "../planStore.js";
+} from "../../utils/settings/render";
+import { SPEC_DEFAULT_SIZE } from "../../utils/settings/render";
 import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
@@ -108,6 +108,12 @@ export default {
         DEFAULT_HOOK_OPTIONS.map((item) => Object.assign({}, item)),
     },
   },
+  computed: {
+    // 自定义材质预设：数据与持久化都在 store（插件写本地缓存），组件只读。
+    customPresets() {
+      return this.$store.state.materialPresets;
+    },
+  },
   data() {
     return {
       ready: false,
@@ -121,7 +127,6 @@ export default {
       exportSize: 1500,
       exportFormat: "png",
       dragging: false,
-      customPresets: [],
       hookName: "橙色挂扣",
       selectedHookId: "orange",
       // Per-plate parameter editing (settings page): the currently selected
@@ -187,13 +192,8 @@ export default {
       this.hookName = builtin.label;
     }
     this.setOptions(this.initialOptions);
-    try {
-      this.customPresets = JSON.parse(
-        localStorage.getItem("acrylic-material-presets") || "[]",
-      );
-    } catch (e) {
-      this.customPresets = [];
-    }
+    // 自定义材质预设：统一走 Vuex，持久化由 store 插件负责。
+    this.$store.dispatch("loadMaterialPresets");
   },
   mounted() {
     this.initialize();
@@ -450,19 +450,6 @@ export default {
       });
       this.initialize();
     },
-    // Receives the merged component area captured on the design canvas. It
-    // only extends the product silhouette (the shape mask), so the acrylic
-    // material stays translucent over the added ear and the punched hole
-    // remains see-through. The printable artwork layer is never altered.
-    setDesignShapeRegion(blob) {
-      const engine = this.engine;
-      if (engine.designShapeRegionUrl) {
-        URL.revokeObjectURL(engine.designShapeRegionUrl);
-      }
-      engine.designShapeRegionUrl =
-        blob instanceof Blob ? URL.createObjectURL(blob) : null;
-      engine.shapeKey = "";
-    },
     applyDesignHole(art) {
       const hole = this.engine.designHole;
       if (!hole || !art || !art.box) return;
@@ -526,6 +513,24 @@ export default {
         if (key === "holeShape" && !["ring", "square"].includes(value)) return;
         this.o[key] = value;
       });
+    },
+    // 应用自定义材质预设：材质类型全局生效，其余参数落到当前编辑板块。
+    applyMaterialPreset(item) {
+      if (!item || !item.options) return;
+      const rest = Object.assign({}, item.options);
+      if (rest.material) {
+        this.setOptions({ material: rest.material });
+        delete rest.material;
+      }
+      Object.keys(rest).forEach((k) => {
+        if (rest[k] !== undefined) this.$set(this.boardEditingO, k, rest[k]);
+      });
+    },
+    // 删除预设：更新 store，持久化由插件自动落本地缓存。
+    removeMaterialPreset(index) {
+      const list = this.$store.state.materialPresets.slice();
+      list.splice(index, 1);
+      this.$store.commit("setMaterialPresets", list);
     },
     async uploadAsset(name, file) {
       if (!file) return;

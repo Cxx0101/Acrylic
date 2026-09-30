@@ -66,7 +66,7 @@
 <script>
 import PatternDesigner from "./PatternDesigner/PatternDesigner.vue";
 import SvgCutlineDesigner from "./SvgCutlineDesigner.vue";
-import { SPEC_DEFAULT_SIZE } from "./planStore.js";
+import { SPEC_DEFAULT_SIZE } from "../utils/home/render";
 
 export default {
   name: "DesignWorkspace",

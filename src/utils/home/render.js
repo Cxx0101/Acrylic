@@ -1,4 +1,22 @@
-import { specRatio } from "../planStore.js";
+// 规格表（含 scale 放大倍数）：切规格时板块按 scale 放大、挂扣净尺寸按
+// scale 缩小（孔位 1/k²）。makeShape 与 boardTransform 消费同一函数。
+export const SPEC_SIZES = [
+  { value: 5, label: "5cm", scale: 1 },
+  { value: 10, label: "10cm", scale: 2 },
+  { value: 20, label: "20cm", scale: 4 },
+];
+export const SPEC_DEFAULT_SIZE = SPEC_SIZES[0].value;
+const SPEC_SCALE_MAP = new Map(
+  SPEC_SIZES.map((item) => [item.value, item.scale]),
+);
+// 规格比例：由规格值查 SPEC_SIZES 表得 scale（5cm→1、10cm→2、20cm→4）。
+// 未登记的规格值兜底为默认规格的比例。保证「板块放大」与「挂扣缩小」
+// 两端一致。
+export function specRatio(specSize) {
+  const v = Number(specSize);
+  if (SPEC_SCALE_MAP.has(v)) return SPEC_SCALE_MAP.get(v);
+  return SPEC_SCALE_MAP.get(SPEC_DEFAULT_SIZE);
+}
 export const SIZE = 500;
 const canvas = (w = SIZE, h = w) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c };
 export function loadImage(src, crossOrigin = 'anonymous') { return new Promise((resolve, reject) => { const i = new Image(); if (crossOrigin && !/^(data:|blob:)/i.test(src)) i.crossOrigin = crossOrigin; i.onload = () => resolve(i); i.onerror = () => reject(new Error('图片加载失败')); i.src = src }) }
