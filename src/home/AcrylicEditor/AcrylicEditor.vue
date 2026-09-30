@@ -133,6 +133,9 @@ export default {
       exportSize: 1500,
       exportFormat: "png",
       dragging: false,
+      // 网络图片链接导入：输入 URL 后由前端 fetch 转成 File 走统一上传链。
+      urlInput: "",
+      urlLoading: false,
       hookName: "橙色挂扣",
       selectedHookId: "orange",
       // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
@@ -545,6 +548,50 @@ export default {
         }
       }
     },
+    // 网络图片链接导入：前端 fetch 拉取（需图片服务器允许 CORS），转成
+    // File 后复用统一上传链（PNG 校验、deferArtworkUpload 转发等全复用）。
+    async uploadFromUrl() {
+      const url = this.urlInput.trim();
+      if (!url || this.urlLoading) return;
+      if (!/^https?:\/\/.+/i.test(url)) {
+        this.reportError(Error("请输入以 http(s):// 开头的网络图片链接。"));
+        return;
+      }
+      this.urlLoading = true;
+      this.error = "";
+      try {
+        const resp = await fetch(url, { mode: "cors" });
+        if (!resp.ok) {
+          throw Error("网络图片下载失败（HTTP " + resp.status + "）。");
+        }
+        const blob = await resp.blob();
+        if (!/^image\//.test(blob.type)) {
+          throw Error("链接指向的不是图片文件。");
+        }
+        const name = (
+          url.split("#")[0].split("?")[0].split("/").pop() || "network.png"
+        ).slice(0, 80);
+        const file = new File([blob], name, {
+          type: blob.type || "image/png",
+        });
+        this.urlInput = "";
+        await this.upload(file);
+      } catch (e) {
+        const msg =
+          e && e.message
+            ? e.message
+            : "网络图片加载失败。";
+        this.reportError(
+          Error(
+            /Failed to fetch|NetworkError|CORS/i.test(msg)
+              ? "网络图片加载失败：图片服务器不允许跨域访问（CORS），请使用直链或先下载后上传。"
+              : msg,
+          ),
+        );
+      } finally {
+        this.urlLoading = false;
+      }
+    },
     async uploadAsset(name, file) {
       if (!file) return;
       if (!["background", "hook", "glitter", "reflection"].includes(name))
@@ -882,6 +929,21 @@ export default {
           <div class="file-info">
             <span class="file-name">{{ filename }}</span
             ><span>{{ dimensions }}</span>
+          </div>
+          <div class="url-import">
+            <input
+              v-model.trim="urlInput"
+              class="url-import-input"
+              type="text"
+              placeholder="或粘贴网络图片链接（http/https）"
+              @keyup.enter="uploadFromUrl"
+            /><button
+              class="url-import-button"
+              :disabled="urlLoading || !urlInput"
+              @click="uploadFromUrl"
+            >
+              {{ urlLoading ? "加载中…" : "加载链接" }}
+            </button>
           </div>
         </section>
         <section>

@@ -779,3 +779,37 @@ canvas {
     overflow: hidden;
     text-overflow: ellipsis
 }
+/* 网络图片链接导入行 */
+.url-import {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.url-import-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  font-size: 12px;
+  color: inherit;
+  background: #fff;
+}
+.url-import-input:focus {
+  outline: none;
+  border-color: #285348;
+}
+.url-import-button {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 7px;
+  background: #285348;
+  color: #fff;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.url-import-button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
