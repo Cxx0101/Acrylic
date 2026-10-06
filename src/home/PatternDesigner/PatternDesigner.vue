@@ -2291,21 +2291,21 @@ export default {
       const requestedInnerHoleWhiteBorder =
         Number(options.innerHoleWhiteBorder) || 0;
       const requestedSmoothing = Number(options.contourSmoothing) || 0;
-      const smoothing =
-        requestedSmoothing > 0
-          ? Math.round(requestedSmoothing)
-          : requestedWhiteBorder === 0
-          ? 0
-          : Math.max(32, Math.round(Math.min(width, height) * 0.06));
-
-      // Worker distances are source pixels, while Fabric fits every output
-      // into a 500px square. Solve the fit scale first, then convert the
-      // requested Fabric-pixel widths to source pixels. This keeps the white
-      // border and cut line visually constant for differently sized images.
+      // 闭运算半径不再自动放大（旧逻辑 max(32, 0.06·minWH) 的巨型包络会
+      // 吞掉图案细部，导致刀线与图案边缘的间距（白边宽度）不均匀）。
+      // 0 = 纯等距外扩，刀线与图案边缘间距处处一致；>0 时为轻度去噪，
+      // 与白边/刀线同单位（Fabric 像素），调用方以 smoothingUnit: "fabric"
+      // 标记后按 fitScale 换算到源像素。组件合并/合成路径传入的半径本身
+      // 就是源像素语义（需大半径包住挂扣连接桥），不带此标记。
       const fitScale = Math.max(
         0.01,
         (500 - 2 * (Math.max(0, requestedWhiteBorder) + requestedCutLine)) /
-          (Math.max(width, height) + smoothing * 2),
+          (Math.max(width, height) + requestedSmoothing * 2),
+      );
+      const smoothing = Math.round(
+        options.smoothingUnit === "fabric"
+          ? requestedSmoothing / fitScale
+          : requestedSmoothing,
       );
 
       return {
@@ -2315,6 +2315,7 @@ export default {
         innerHoleWhiteBorder: Math.round(
           requestedInnerHoleWhiteBorder / fitScale,
         ),
+        contourSmoothing: smoothing,
       };
     },
 
@@ -3804,7 +3805,7 @@ export default {
       const options = this.getPreviewWorkerOptions(
         sourceImage.width,
         sourceImage.height,
-        requestedOptions,
+        { ...requestedOptions, smoothingUnit: "fabric" },
         this.whiteBorder,
         this.form.cutLine,
       );

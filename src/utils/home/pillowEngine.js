@@ -395,13 +395,14 @@ async function runPillowEngine(file, options, jobId, rawImage = null, onProgress
     // silhouette instead of turning concave exterior gaps into a smoothed
     // envelope. Positive/negative borders retain the adaptive smoothing used
     // to make their backing edge less noisy.
+    // 闭运算半径完全由调用方决定：0 = 纯等距外扩（刀线与图案边缘间距
+    // 处处一致）。不再按图片尺寸自动放大——旧回退 max(32, 0.06·minWH)
+    // 的巨型包络会吞掉图案细部，导致白边宽度不均匀。
     const requestedSmoothing = Number(contourSmoothing);
     const smoothRadius =
-        Number.isFinite(requestedSmoothing) && requestedSmoothing > 0
-            ? requestedSmoothing
-            : whiteBorder === 0
-                ? 0
-                : Math.max(32, Math.round(Math.min(W, H) * 0.06));
+      Number.isFinite(requestedSmoothing) && requestedSmoothing > 0
+        ? requestedSmoothing
+        : 0;
     const outerWhiteBorder = Math.max(0, whiteBorder);
     const pad = outerWhiteBorder + cutLine + smoothRadius;
     const mainOutW = W + pad * 2;
