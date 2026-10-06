@@ -5,10 +5,24 @@
         <button
           class="header-action"
           :disabled="!editorReady"
+          @click="triggerImportPlan"
+        >
+          导入方案 JSON
+        </button>
+        <button
+          class="header-action"
+          :disabled="!editorReady"
           @click="exportPlan"
         >
           导出方案 JSON
         </button>
+        <input
+          ref="planFile"
+          type="file"
+          accept=".json,application/json"
+          style="display: none"
+          @change="onPlanFile"
+        />
       </template>
     </AppHeader>
     <AcrylicEditor
@@ -150,9 +164,59 @@ export default {
       if (board) this.$set(board, "o", o);
     },
     // 页面加载时恢复方案数据。本地缓存已移除：后续在此处调用后端接口
-    // 拉取布局与效果参数（拉到后写 sharedState.planBoards 并 loadConfig），
-    // 当前为空实现。
+    // 拉到方案后走 applyPlan 复原（同导入 JSON 一条链路）。
     restorePlan() {},
+    // ---- 导入方案 JSON：复原效果参数、背景资产与板块布局 ----
+    triggerImportPlan() {
+      const input = this.$refs.planFile;
+      if (!input) return;
+      input.value = "";
+      input.click();
+    },
+    async onPlanFile(e) {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      let plan;
+      try {
+        plan = JSON.parse(await file.text());
+      } catch (err) {
+        this.onError(Error("方案 JSON 解析失败：" + err.message));
+        return;
+      }
+      await this.applyPlan(plan);
+      console.log("🚀 ~ plan:", plan)
+    },
+    // 应用方案数据（文件导入与后续接口共用）。兼容两种形态：
+    // v5 方案 {version, options, boards, assets, export} 与纯 v4 配置。
+    // 错误经编辑器 reportError 显示在侧栏（格式错/资产非法均不崩页）。
+    async applyPlan(plan) {
+      const editor = this.$refs.editor;
+      if (!editor || !editor.loadConfig) return;
+      editor.error = "";
+      const fail = (err) => {
+        if (editor.reportError) editor.reportError(err);
+        else console.error(err);
+      };
+      if (!plan || typeof plan !== "object" || !plan.options) {
+        fail(Error("方案 JSON 格式不正确。"));
+        return;
+      }
+      try {
+        await editor.loadConfig(plan);
+      } catch (err) {
+        fail(err);
+        return;
+      }
+      if (Array.isArray(plan.boards)) {
+        // 布局复原：写回共享 planBoards（BoardLayoutEditor 即时显示，
+        // 首页 unionBoards 同步联动）。板块设计图不在 JSON 数据域内
+        // （设计态属首页内存），画布按复原后的参数渲染场景。
+        sharedState.planBoards = JSON.parse(JSON.stringify(plan.boards));
+        this.settingsBoardId = null;
+        if (editor.setEditingBoard) editor.setEditingBoard(null, null, "");
+      }
+    },
   },
 };
 </script>

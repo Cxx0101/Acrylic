@@ -12,10 +12,6 @@ import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
 import reflectionUrl from "./assets/reflection.png";
-import redHookUrl from "./assets/redHook.png";
-import blueHookUrl from "./assets/blueHook.png";
-import greenHookUrl from "./assets/greenHook.png";
-import purpleHookUrl from "./assets/purpleHook.png";
 
 const DEFAULTS = {
   border: 16,
@@ -54,38 +50,11 @@ const DEFAULTS = {
   shadowBlur: 5,
   shadowOpacity: 20,
 };
-const MATERIALS = [
-  ["clear", "透明", "clear"],
-  ["glitter", "彩色亮片", "glitter"],
-  ["frost", "磨砂", "frost"],
-  ["tinted", "彩色透明", "tinted"],
-  ["pearl", "珠光", "pearl"],
-];
-const DEFAULT_HOOK_OPTIONS = [
-  { id: "orange", label: "橙色挂扣", type: "builtin", src: hookUrl },
-  { id: "blue", label: "蓝色挂扣", type: "builtin", src: blueHookUrl },
-  { id: "green", label: "绿色挂扣", type: "builtin", src: greenHookUrl },
-  { id: "purple", label: "紫色挂扣", type: "builtin", src: purpleHookUrl },
-  { id: "red", label: "红色挂扣", type: "builtin", src: redHookUrl },
-  { id: "none", label: "无挂扣", type: "none" },
-  { id: "custom", label: "自定义上传", type: "upload" },
-];
-const BUILTIN_HOOK_SOURCES = {
-  orange: hookUrl,
-  blue: blueHookUrl,
-  green: greenHookUrl,
-  purple: purpleHookUrl,
-  red: redHookUrl,
-};
 const BUILTIN = {
   background: backgroundUrl,
   hook: hookUrl,
   glitter: glitterUrl,
   reflection: reflectionUrl,
-  redHook: redHookUrl,
-  blueHook: blueHookUrl,
-  greenHook: greenHookUrl,
-  purpleHook: purpleHookUrl,
 };
 function imageToDataUrl(img, type = "image/png", quality = 0.92) {
   const c = document.createElement("canvas");
@@ -102,11 +71,6 @@ export default {
     assetUrls: { type: Object, default: () => ({}) },
     initialOptions: { type: Object, default: () => ({}) },
     crossOrigin: { type: String, default: "anonymous" },
-    hookOptions: {
-      type: Array,
-      default: () =>
-        DEFAULT_HOOK_OPTIONS.map((item) => Object.assign({}, item)),
-    },
   },
   data() {
     return {
@@ -121,15 +85,11 @@ export default {
       exportSize: 1500,
       exportFormat: "png",
       dragging: false,
-      hookName: "橙色挂扣",
-      selectedHookId: "orange",
       // Per-plate parameter editing (settings page): the currently selected
       // board and its responsive parameter override object.
       boardEditingId: null,
       boardEditingName: "",
       boardEditingO: {},
-      // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
-      loadingConfig: false,
     };
   },
   watch: {
@@ -180,11 +140,6 @@ export default {
       destroyed: false,
       designShapeRegionUrl: null,
     };
-    const builtin = this.hookOptions.find((item) => item.type === "builtin");
-    if (builtin) {
-      this.selectedHookId = builtin.id;
-      this.hookName = builtin.label;
-    }
     this.setOptions(this.initialOptions);
   },
   mounted() {
@@ -488,8 +443,6 @@ export default {
           if (!Number.isFinite(value)) return;
           value = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
         }
-        if (key === "material" && !MATERIALS.some((m) => m[0] === value))
-          return;
         if (
           key === "background" &&
           !["scene", "white", "transparent"].includes(value)
@@ -508,8 +461,7 @@ export default {
     },
     async uploadAsset(name, file) {
       if (!file) return;
-      if (!["background", "hook", "glitter", "reflection"].includes(name))
-        return;
+      if (!["background", "glitter", "reflection"].includes(name)) return;
       if (!/^image\//.test(file.type)) {
         this.reportError(Error("请选择图片素材。"));
         return;
@@ -525,24 +477,11 @@ export default {
           throw Error("素材图片过大，请缩小到 2500 万像素以内。");
         this.engine.assetOverrides[name] = img;
         this.engine.assets[name] = img;
-        if (name === "background" || name === "hook") {
-          this.engine.assetData[name] = imageToDataUrl(
-            img,
-            name === "background" ? "image/jpeg" : "image/png",
-          );
-          this.engine.assetNames[name] = file.name;
-        }
         if (name === "background") {
+          this.engine.assetData[name] = imageToDataUrl(img, "image/jpeg");
+          this.engine.assetNames[name] = file.name;
           this.o.background = "scene";
           this.scenePreset = "custom";
-        }
-        if (name === "hook") {
-          const upload = this.hookOptions.find(
-            (item) => item.type === "upload",
-          );
-          this.o.hook = true;
-          this.hookName = file.name;
-          this.selectedHookId = upload ? upload.id : "custom";
         }
         this.redraw();
         this.$emit("asset-change", { name, file });
@@ -550,89 +489,6 @@ export default {
         this.reportError(e);
       } finally {
         URL.revokeObjectURL(url);
-      }
-    },
-    resetAsset(name) {
-      if (this.engine.builtinAssets[name]) {
-        delete this.engine.assetOverrides[name];
-        this.engine.assets[name] = this.engine.builtinAssets[name];
-        if (name === "background" || name === "hook") {
-          try {
-            this.engine.assetData[name] = imageToDataUrl(
-              this.engine.builtinAssets[name],
-              name === "background" ? "image/jpeg" : "image/png",
-            );
-            this.engine.assetNames[name] = name + ".png";
-          } catch (e) {
-            this.engine.assetData[name] = null;
-          }
-        }
-        if (name === "hook") {
-          const builtin =
-            this.hookOptions.find((item) => item.type === "builtin") ||
-            DEFAULT_HOOK_OPTIONS[0];
-          this.hookName = builtin.label;
-          this.selectedHookId = builtin.id;
-        }
-        this.redraw();
-      }
-    },
-    // 挂扣变更通知：loadConfig 恢复期间不发（外层效果图重渲依赖它）。
-    notifyHookChange() {
-      if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
-    },
-    hookOptionSrc(option) {
-      if (!option) return "";
-      // Every builtin option is immediately usable. A caller may override the
-      // bundled source with `src`; otherwise resolve its id from local assets.
-      if (option.type === "builtin")
-        return option.src || BUILTIN_HOOK_SOURCES[option.id] || hookUrl;
-      return option.src || "";
-    },
-    async selectHook(option) {
-      if (!option || !option.id) return;
-      if (option.type === "none") {
-        this.o.hook = false;
-        this.selectedHookId = option.id;
-        this.hookName = option.label;
-        this.notifyHookChange();
-        return;
-      }
-      if (option.type === "upload") return;
-      const src = this.hookOptionSrc(option);
-      if (!src) {
-        this.o.hook = true;
-        this.resetAsset("hook");
-        this.selectedHookId = option.id;
-        this.hookName = option.label;
-        this.notifyHookChange();
-        return;
-      }
-      try {
-        // 内置挂扣图片按 id 缓存（engine 与组件同生命周期），
-        // 避免每次切换都重新加载+重编码同一张图。
-        const engine = this.engine;
-        engine.builtinHookCache = engine.builtinHookCache || {};
-        let cached = engine.builtinHookCache[option.id];
-        if (!cached) {
-          const img = await loadImage(src, this.crossOrigin);
-          if (img.width * img.height > 25000000)
-            throw Error("挂扣图片像素过大。");
-          cached = { img, dataUrl: imageToDataUrl(img) };
-          engine.builtinHookCache[option.id] = cached;
-        }
-        const { img, dataUrl } = cached;
-        this.engine.assetOverrides.hook = img;
-        this.engine.assets.hook = img;
-        this.engine.assetData.hook = dataUrl;
-        this.engine.assetNames.hook = option.label + ".png";
-        this.o.hook = true;
-        this.selectedHookId = option.id;
-        this.hookName = option.label;
-        this.redraw();
-        this.notifyHookChange();
-      } catch (e) {
-        this.reportError(e);
       }
     },
     createConfig() {
@@ -649,13 +505,6 @@ export default {
           hook: {
             name: this.engine.assetNames.hook || "hook.png",
             dataUrl: this.engine.assetData.hook || null,
-            builtin:
-              (
-                this.hookOptions.find(
-                  (item) => item.id === this.selectedHookId,
-                ) || {}
-              ).type === "builtin",
-            selection: this.selectedHookId,
           },
         },
       };
@@ -663,68 +512,29 @@ export default {
     async loadConfig(config) {
       if (!config || typeof config !== "object" || !config.options)
         throw Error("配置文件格式不正确。");
-      // 加载期 suppress selectHook 的 change 通知：重放挂扣选择属于
-      // 配置恢复而非用户操作，避免触发外层的方案重渲反馈环。
-      this.loadingConfig = true;
-      try {
-        await this.applyLoadConfig(config);
-      } finally {
-        this.loadingConfig = false;
-      }
+      await this.applyLoadConfig(config);
     },
     async applyLoadConfig(config) {
-      for (const name of ["background", "hook"]) {
-        const embedded = config.assets && config.assets[name];
-        if (name === "hook" && embedded && embedded.builtin) {
-          const selected = this.hookOptions.find(
-            (item) => item.id === embedded.selection,
-          );
-          if (selected && selected.type === "builtin")
-            await this.selectHook(selected);
-          else this.resetAsset("hook");
-          continue;
-        }
-        if (!embedded || !embedded.dataUrl) continue;
+      // 仅恢复背景资产；挂扣资产随 o.hook 走内置默认（本页无挂扣选择器）。
+      const embedded = config.assets && config.assets.background;
+      if (embedded && embedded.dataUrl) {
         if (
           typeof embedded.dataUrl !== "string" ||
           embedded.dataUrl.length > 22 * 1024 * 1024 ||
           !/^data:image\/(png|jpeg|webp);base64,/i.test(embedded.dataUrl)
         )
-          throw Error(
-            "方案中的" +
-              (name === "background" ? "背景" : "挂扣") +
-              "图片无效或过大。",
-          );
+          throw Error("方案中的背景图片无效或过大。");
         const img = await loadImage(embedded.dataUrl, "");
         if (img.width * img.height > 25000000)
           throw Error("方案中的图片像素过大。");
-        this.engine.assetOverrides[name] = img;
-        this.engine.assets[name] = img;
-        this.engine.assetData[name] = embedded.dataUrl;
-        this.engine.assetNames[name] = String(
-          embedded.name || name + ".png",
+        this.engine.assetOverrides.background = img;
+        this.engine.assets.background = img;
+        this.engine.assetData.background = embedded.dataUrl;
+        this.engine.assetNames.background = String(
+          embedded.name || "background.png",
         ).slice(0, 120);
-        if (name === "hook") {
-          const selected = this.hookOptions.find(
-              (item) => item.id === embedded.selection,
-            ),
-            upload = this.hookOptions.find((item) => item.type === "upload");
-          this.hookName = this.engine.assetNames[name];
-          this.selectedHookId = selected
-            ? selected.id
-            : upload
-            ? upload.id
-            : "custom";
-        }
       }
       this.setOptions(config.options);
-      if (!this.o.hook) {
-        const none = this.hookOptions.find((item) => item.type === "none");
-        if (none) {
-          this.selectedHookId = none.id;
-          this.hookName = none.label;
-        }
-      }
       if (config.export) {
         if ([1000, 1500, 2000].includes(Number(config.export.size)))
           this.exportSize = Number(config.export.size);

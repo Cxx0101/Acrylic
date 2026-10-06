@@ -180,69 +180,6 @@ section h2 span {
     max-width: 155px
 }
 
-.materials {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 9px
-}
-
-.material {
-    position: relative;
-    border: 1px solid #e5e9e6;
-    border-radius: 8px;
-    background: white;
-    padding: 10px 4px;
-    font-size: 12px;
-    color: #66726f;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 9px
-}
-
-.material.active {
-    border: 1.5px solid #366052;
-    background: #f3f7f3;
-    color: #284f43
-}
-
-.material b {
-    position: absolute;
-    right: 5px;
-    top: 3px;
-    font-size: 10px
-}
-
-.material i {
-    display: block;
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    border: 1px solid #d3dcd7;
-    transform: rotate(-8deg);
-    box-shadow: 2px 3px 4px #0000000b
-}
-
-.clear {
-    background: linear-gradient(130deg, #fff9, #ccd9d744, #fff)
-}
-
-.glitter {
-    background: #f4eedf url('./assets/glitter.png') center/110px
-}
-
-.frost {
-    background: linear-gradient(135deg, #e4eae5, #fff)
-}
-
-.tinted {
-    background: linear-gradient(135deg, #ddd2f4, #ad9bd6)
-}
-
-.pearl {
-    background: linear-gradient(130deg, #f3dcec, #daedec, #f4e7ce)
-}
-
 .range-label {
     display: block;
     font-size: 14px;
@@ -414,10 +351,6 @@ canvas {
         border-right: 0;
         border-top: 1px solid #e1e6e1;
         padding: 24px 20px
-    }
-
-    .materials {
-        grid-template-columns: repeat(5, 1fr)
     }
 
     .canvas-wrap {
@@ -704,78 +637,4 @@ canvas {
     background: #f1f6f3;
     color: #2d5548;
     font-weight: 600
-}
-
-.hook-options {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px
-}
-
-.hook-options button,
-.hook-options label {
-    min-width: 0;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    min-height: 82px;
-    border: 1px solid #d8dfdb;
-    border-radius: 9px;
-    background: #fff;
-    color: #617069;
-    font-size: 11px;
-    text-align: center;
-    padding: 8px;
-    overflow: hidden;
-    cursor: pointer
-}
-
-.hook-options .active {
-    border: 2px solid #3e695b;
-    background: #f1f6f3;
-    color: #2d5548
-}
-
-.hook-options input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer
-}
-
-.hook-thumb,
-.hook-preset {
-    width: 27px;
-    height: 44px;
-    background: url('./assets/hook.png') center/contain no-repeat
-}
-
-.hook-preset {
-    background-position: center;
-    background-size: contain;
-    background-repeat: no-repeat
-}
-
-.hook-none,
-.hook-upload {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: #edf1ee;
-    color: #738079;
-    font-size: 20px;
-    font-style: normal
-}
-
-.hook-options span {
-    display: block;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis
 }

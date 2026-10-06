@@ -223,24 +223,57 @@ section h2 span {
     box-shadow: 2px 3px 4px #0000000b
 }
 
+/* 材质带 src（接口/外链图）时替代融合类：整图 center/cover 显示 */
+.material-thumb {
+    background-color: #f2f5f3;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat
+}
+
+/* 材质缩略图 = 图片融合：多层 background-image（渐变 / 纹理图 / 反光图）
+   经 background-blend-mode 叠合出真实质感，替代单层 CSS 渐变色块。
+   blend 顺序与 image 层对应：上层先混合，最底层与背景色混合。 */
 .clear {
-    background: linear-gradient(130deg, #fff9, #ccd9d744, #fff)
+    background-color: #e9f0ee;
+    background-image: linear-gradient(130deg, rgba(255, 255, 255, .82), rgba(197, 212, 210, .5) 50%, rgba(255, 255, 255, .92)),
+        url('./assets/reflection.png');
+    background-size: 100% 100%, cover;
+    background-blend-mode: normal, screen;
 }
 
 .glitter {
-    background: #f4eedf url('./assets/glitter.png') center/110px
+    background-color: #f6f1e4;
+    background-image: linear-gradient(135deg, rgba(219, 96, 70, .56), rgba(237, 185, 54, .52) 33%, rgba(39, 158, 149, .52) 66%, rgba(157, 113, 187, .58)),
+        url('./assets/glitter.png');
+    background-size: 100% 100%, 38px;
+    background-blend-mode: overlay, normal;
 }
 
 .frost {
-    background: linear-gradient(135deg, #e4eae5, #fff)
+    background-color: #edf1ef;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, .72), rgba(222, 230, 227, .66)),
+        url('./assets/glitter.png');
+    background-size: 100% 100%, 30px;
+    /* 彩色亮片经 luminosity 融合到灰白底，只剩明暗颗粒 → 磨砂质感 */
+    background-blend-mode: normal, luminosity;
 }
 
 .tinted {
-    background: linear-gradient(135deg, #ddd2f4, #ad9bd6)
+    background-color: #b7a4da;
+    background-image: linear-gradient(135deg, rgba(230, 221, 247, .92), rgba(158, 141, 200, .88)),
+        url('./assets/reflection.png');
+    background-size: 100% 100%, cover;
+    background-blend-mode: normal, screen;
 }
 
 .pearl {
-    background: linear-gradient(130deg, #f3dcec, #daedec, #f4e7ce)
+    background-color: #eae4da;
+    background-image: linear-gradient(130deg, #f2c4e0, #c5e5e7 48%, #f1ddba),
+        conic-gradient(from 215deg at 30% 26%, rgba(255, 255, 255, 0), rgba(255, 255, 255, .95) 15%, rgba(255, 255, 255, 0) 34%),
+        url('./assets/reflection.png');
+    background-size: 100% 100%, 100% 100%, cover;
+    background-blend-mode: normal, overlay, overlay;
 }
 
 .range-label {

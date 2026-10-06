@@ -54,12 +54,14 @@ const DEFAULTS = {
   shadowBlur: 5,
   shadowOpacity: 20,
 };
+// 材质列表：id 同时用作缩略图融合类名（style.css 的 .clear/.glitter/...）；
+// src 为材质预览图地址（接口/外链用），为空时缩略图走内置融合效果。
 const MATERIALS = [
-  ["clear", "透明", "clear"],
-  ["glitter", "彩色亮片", "glitter"],
-  ["frost", "磨砂", "frost"],
-  ["tinted", "彩色透明", "tinted"],
-  ["pearl", "珠光", "pearl"],
+  { id: "clear", label: "透明", src: "" },
+  { id: "glitter", label: "彩色亮片", src: "" },
+  { id: "frost", label: "磨砂", src: "" },
+  { id: "tinted", label: "彩色透明", src: "" },
+  { id: "pearl", label: "珠光", src: "" },
 ];
 const DEFAULT_HOOK_OPTIONS = [
   { id: "orange", label: "橙色挂扣", type: "builtin", src: hookUrl },
@@ -464,7 +466,7 @@ export default {
           if (!Number.isFinite(value)) return;
           value = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
         }
-        if (key === "material" && !MATERIALS.some((m) => m[0] === value))
+        if (key === "material" && !MATERIALS.some((m) => m.id === value))
           return;
         if (
           key === "background" &&
@@ -965,13 +967,16 @@ export default {
           <div class="materials">
             <button
               v-for="m in materials"
-              :key="m[0]"
-              :class="['material', { active: o.material === m[0] }]"
-              :aria-pressed="o.material === m[0]"
-              @click="o.material = m[0]"
+              :key="m.id"
+              :class="['material', { active: o.material === m.id }]"
+              :aria-pressed="o.material === m.id"
+              @click="o.material = m.id"
             >
-              <i :class="m[2]"></i><span>{{ m[1] }}</span
-              ><b v-if="o.material === m[0]">✓</b>
+              <i
+                :class="m.src ? 'material-thumb' : m.id"
+                :style="m.src ? { backgroundImage: 'url(' + m.src + ')' } : null"
+              ></i><span>{{ m.label }}</span
+              ><b v-if="o.material === m.id">✓</b>
             </button>
           </div>
         </section>
