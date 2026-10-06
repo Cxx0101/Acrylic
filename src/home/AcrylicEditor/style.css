@@ -779,14 +779,9 @@ canvas {
     cursor: pointer
 }
 
-.hook-thumb,
 .hook-preset {
     width: 27px;
     height: 44px;
-    background: url('./assets/hook.png') center/contain no-repeat
-}
-
-.hook-preset {
     background-position: center;
     background-size: contain;
     background-repeat: no-repeat

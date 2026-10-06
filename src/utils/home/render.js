@@ -65,7 +65,11 @@ export function renderProduct(assets, art, o, shape) {
     if (o.background === 'scene') { l.save(); l.globalAlpha = o.material === 'frost' ? 1 : .75; l.filter = o.material === 'frost' ? `blur(${3 + strength * 7}px)` : 'none'; l.drawImage(assets.background, -1.7, -.8, n + 3.4, n + 1.6); l.restore() }
     const wash = l.createLinearGradient(175, 240, 330, 455); wash.addColorStop(0, `rgba(224,246,251,${.12 + strength * .12})`); wash.addColorStop(.48, 'rgba(255,255,255,.025)'); wash.addColorStop(1, `rgba(121,171,185,${strength * .16})`); l.fillStyle = wash; l.fillRect(0, 0, n, n);
     if (o.baseColor) { l.save(); l.globalAlpha = (o.baseOpacity == null ? 0 : o.baseOpacity) / 100; l.fillStyle = o.baseColor; l.fillRect(0, 0, n, n); l.restore() }
-    if (o.material === 'frost') {
+    // 外部材质纹理图（图片驱动材质）优先：直接用当前材质图片平铺；
+    // 无纹理图时回退 o.material 驱动的程序化材质。
+    if (assets.materialTexture) {
+        l.save(); l.globalAlpha = (o.textureOpacity == null ? 100 : o.textureOpacity) / 100; const mtp = l.createPattern(assets.materialTexture, 'repeat'); mtp.setTransform(new DOMMatrix().scale(.15 * ((o.textureScale || 100) / 100))); l.fillStyle = mtp; l.fillRect(0, 0, n, n); l.restore();
+    } else if (o.material === 'frost') {
         l.fillStyle = `rgba(242,248,250,${.38 + strength * .38})`; l.fillRect(0, 0, n, n);
         const rand = random(); for (let i = 0; i < 19000; i++) { const px = rand() * n, py = rand() * n, r = .18 + rand() * .45; l.fillStyle = rand() > .5 ? `rgba(255,255,255,${.12 + strength * .3})` : `rgba(111,137,148,${strength * .13})`; l.fillRect(px, py, r, r) }
     } else if (o.material === 'tinted') {

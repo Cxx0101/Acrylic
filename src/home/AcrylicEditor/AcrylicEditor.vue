@@ -12,10 +12,6 @@ import backgroundUrl from "./assets/background.png";
 import hookUrl from "./assets/hook.png";
 import glitterUrl from "./assets/glitter.png";
 import reflectionUrl from "./assets/reflection.png";
-import redHookUrl from "./assets/redHook.png";
-import blueHookUrl from "./assets/blueHook.png";
-import greenHookUrl from "./assets/greenHook.png";
-import purpleHookUrl from "./assets/purpleHook.png";
 
 const DEFAULTS = {
   border: 16,
@@ -54,8 +50,10 @@ const DEFAULTS = {
   shadowBlur: 5,
   shadowOpacity: 20,
 };
-// 材质列表：id 同时用作缩略图融合类名（style.css 的 .clear/.glitter/...）；
-// src 为材质预览图地址（接口/外链用），为空时缩略图走内置融合效果。
+// 材质列表（materials prop 的默认内置项）：项 {id, label, src}。
+// src 为空 = 内置程序化材质（id 驱动 render.js 渲染分支 + 缩略图融合类）；
+// src 为网络材质纹理图 = 选中后画布直接用该图渲染（material-thumb 缩略图）。
+// 数组内容由 materials prop 整体传入，接口接入后覆盖默认项。
 const MATERIALS = [
   { id: "clear", label: "透明", src: "" },
   { id: "glitter", label: "彩色亮片", src: "" },
@@ -63,31 +61,14 @@ const MATERIALS = [
   { id: "tinted", label: "彩色透明", src: "" },
   { id: "pearl", label: "珠光", src: "" },
 ];
-const DEFAULT_HOOK_OPTIONS = [
-  { id: "orange", label: "橙色挂扣", type: "builtin", src: hookUrl },
-  { id: "blue", label: "蓝色挂扣", type: "builtin", src: blueHookUrl },
-  { id: "green", label: "绿色挂扣", type: "builtin", src: greenHookUrl },
-  { id: "purple", label: "紫色挂扣", type: "builtin", src: purpleHookUrl },
-  { id: "red", label: "红色挂扣", type: "builtin", src: redHookUrl },
-  { id: "none", label: "无挂扣", type: "none" },
-  { id: "custom", label: "自定义上传", type: "upload" },
-];
-const BUILTIN_HOOK_SOURCES = {
-  orange: hookUrl,
-  blue: blueHookUrl,
-  green: greenHookUrl,
-  purple: purpleHookUrl,
-  red: redHookUrl,
-};
+// 挂扣列表由外部传入（hookOptions prop，接口返回什么渲染什么）：
+// 项结构 {id, label, src}，src 为网络图片地址；src 为空表示"无挂扣"。
+// hookUrl 仅为画布默认渲染资产（BUILTIN.hook），不参与选择器。
 const BUILTIN = {
   background: backgroundUrl,
   hook: hookUrl,
   glitter: glitterUrl,
   reflection: reflectionUrl,
-  redHook: redHookUrl,
-  blueHook: blueHookUrl,
-  greenHook: greenHookUrl,
-  purpleHook: purpleHookUrl,
 };
 function imageToDataUrl(img, type = "image/png", quality = 0.92) {
   const c = document.createElement("canvas");
@@ -113,10 +94,18 @@ export default {
     // 预览页用走马灯替换 mockup 预览时置 true：canvas-wrap 仅隐藏不销毁，
     // exportImage / setBoards 渲染链不受影响。
     previewReplace: { type: Boolean, default: false },
+    // 挂扣列表（动态）：项 {id, label, src}，src 为网络图片地址；
+    // src 为空的项表示"无挂扣"。数组内容不固定，由调用方/接口传入。
     hookOptions: {
       type: Array,
-      default: () =>
-        DEFAULT_HOOK_OPTIONS.map((item) => Object.assign({}, item)),
+      default: () => [{ id: "1", label: "橙色挂扣", src: "https://youzongplatform.oss-cn-guangzhou.aliyuncs.com/uploads/images/20261006/20261006151116c7a640836.png" }],
+    },
+    // 材质列表（动态）：项 {id, label, src}。src 为网络材质纹理图——选中后
+    // 画布直接用该图渲染；src 为空走内置程序化材质（o.material 驱动）。
+    // 默认给内置五项保持 UI 可用，接口接入后整体覆盖。
+    materials: {
+      type: Array,
+      default: () => MATERIALS.map((item) => Object.assign({}, item)),
     },
   },
   data() {
@@ -128,7 +117,6 @@ export default {
       filename: "切图_05.png",
       dimensions: "",
       o: Object.assign({}, DEFAULTS),
-      materials: MATERIALS,
       // 规格表来自 render.js（含 scale 放大倍数），克隆防组件间串改。
       specSizes: SPEC_SIZES.map((item) => Object.assign({}, item)),
       scenePreset: "studio",
@@ -138,8 +126,10 @@ export default {
       // 网络图片链接导入：输入 URL 后由前端 fetch 转成 File 走统一上传链。
       urlInput: "",
       urlLoading: false,
-      hookName: "橙色挂扣",
-      selectedHookId: "orange",
+      // 当前选中挂扣：id 对应 hookOptions 项；"none"=无挂扣、"custom"=上传。
+      // null = 尚未选择（画布按 BUILTIN.hook 默认渲染）。
+      hookName: "",
+      selectedHookId: null,
       // loadConfig 恢复配置期间为 true（suppress 内部触发的 change 通知）。
       loadingConfig: false,
     };
@@ -176,8 +166,12 @@ export default {
       assets: {},
       builtinAssets: {},
       assetOverrides: {},
-      assetData: { background: null, hook: null },
-      assetNames: { background: "background.png", hook: "hook.png" },
+      assetData: { background: null, hook: null, materialTexture: null },
+      assetNames: {
+        background: "background.png",
+        hook: "hook.png",
+        materialTexture: "",
+      },
       boards: [],
       boardConfigs: null,
       boardShapeRegionUrls: [],
@@ -191,11 +185,6 @@ export default {
       destroyed: false,
       designShapeRegionUrl: null,
     };
-    const builtin = this.hookOptions.find((item) => item.type === "builtin");
-    if (builtin) {
-      this.selectedHookId = builtin.id;
-      this.hookName = builtin.label;
-    }
     this.setOptions(this.initialOptions);
   },
   mounted() {
@@ -466,7 +455,7 @@ export default {
           if (!Number.isFinite(value)) return;
           value = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
         }
-        if (key === "material" && !MATERIALS.some((m) => m.id === value))
+        if (key === "material" && !this.materials.some((m) => m.id === value))
           return;
         if (
           key === "background" &&
@@ -579,10 +568,7 @@ export default {
         this.urlInput = "";
         await this.upload(file);
       } catch (e) {
-        const msg =
-          e && e.message
-            ? e.message
-            : "网络图片加载失败。";
+        const msg = e && e.message ? e.message : "网络图片加载失败。";
         this.reportError(
           Error(
             /Failed to fetch|NetworkError|CORS/i.test(msg)
@@ -625,12 +611,9 @@ export default {
           this.scenePreset = "custom";
         }
         if (name === "hook") {
-          const upload = this.hookOptions.find(
-            (item) => item.type === "upload",
-          );
           this.o.hook = true;
           this.hookName = file.name;
-          this.selectedHookId = upload ? upload.id : "custom";
+          this.selectedHookId = "custom";
         }
         this.redraw();
         this.$emit("asset-change", { name, file });
@@ -656,11 +639,10 @@ export default {
           }
         }
         if (name === "hook") {
-          const builtin =
-            this.hookOptions.find((item) => item.type === "builtin") ||
-            DEFAULT_HOOK_OPTIONS[0];
-          this.hookName = builtin.label;
-          this.selectedHookId = builtin.id;
+          // 回到内置默认挂扣资产；默认钩不在动态 hookOptions 数组中，
+          // 选择状态清空（UI 无高亮）。
+          this.hookName = "";
+          this.selectedHookId = null;
         }
         this.redraw();
       }
@@ -669,46 +651,87 @@ export default {
     notifyHookChange() {
       if (!this.loadingConfig) this.$emit("change", Object.assign({}, this.o));
     },
-    async selectHook(option) {
-      if (!option || !option.id) return;
-      if (option.type === "none") {
-        this.o.hook = false;
-        this.selectedHookId = option.id;
-        this.hookName = option.label;
-        this.notifyHookChange();
+    // 切换材质：src 有值（外部材质项）→ 直接加载当前材质图片作为画布
+    // 纹理渲染（按 id 缓存）；src 为空（内置项）→ 清纹理图，回退
+    // o.material 驱动的程序化材质渲染。
+    async selectMaterial(m) {
+      if (!m || !m.id) return;
+      const engine = this.engine;
+      if (!m.src) {
+        delete this.engine.assetOverrides.materialTexture;
+        delete this.engine.assets.materialTexture;
+        this.engine.assetData.materialTexture = null;
+        this.engine.assetNames.materialTexture = "";
+        this.o.material = m.id;
+        this.redraw();
         return;
       }
-      if (option.type === "upload") return;
-      const src = this.hookOptionSrc(option);
+      try {
+        engine.materialImgCache = engine.materialImgCache || {};
+        let cached = engine.materialImgCache[m.id];
+        if (!cached) {
+          const img = await loadImage(m.src, this.crossOrigin);
+          if (img.width * img.height > 25000000)
+            throw Error("材质图片像素过大。");
+          let dataUrl = null;
+          try {
+            dataUrl = imageToDataUrl(img);
+          } catch (e) {
+            dataUrl = null;
+          }
+          cached = { img, dataUrl };
+          engine.materialImgCache[m.id] = cached;
+        }
+        const { img, dataUrl } = cached;
+        this.engine.assetOverrides.materialTexture = img;
+        this.engine.assets.materialTexture = img;
+        this.engine.assetData.materialTexture = dataUrl;
+        this.engine.assetNames.materialTexture = (m.label || m.id) + ".png";
+        this.o.material = m.id;
+        this.redraw();
+      } catch (e) {
+        this.reportError(e);
+      }
+    },
+    // 切换挂扣：直接使用当前挂扣项的图片渲染。src 为空（"无挂扣"项）时
+    // 关闭挂扣；有 src 时加载网络图，按 id 缓存（engine 与组件同生命周期），
+    // dataUrl 供导出配置跨页恢复（跨域污染时降级为 null，不影响渲染）。
+    async selectHook(option) {
+      if (!option || !option.id) return;
+      const src = option.src || "";
       if (!src) {
-        this.o.hook = true;
-        this.resetAsset("hook");
+        this.o.hook = false;
         this.selectedHookId = option.id;
-        this.hookName = option.label;
+        this.hookName = option.label || "无挂扣";
+        this.redraw();
         this.notifyHookChange();
         return;
       }
       try {
-        // 内置挂扣图片按 id 缓存（engine 与组件同生命周期），
-        // 避免每次切换都重新加载+重编码同一张图。
         const engine = this.engine;
-        engine.builtinHookCache = engine.builtinHookCache || {};
-        let cached = engine.builtinHookCache[option.id];
+        engine.hookImgCache = engine.hookImgCache || {};
+        let cached = engine.hookImgCache[option.id];
         if (!cached) {
           const img = await loadImage(src, this.crossOrigin);
           if (img.width * img.height > 25000000)
             throw Error("挂扣图片像素过大。");
-          cached = { img, dataUrl: imageToDataUrl(img) };
-          engine.builtinHookCache[option.id] = cached;
+          let dataUrl = null;
+          try {
+            dataUrl = imageToDataUrl(img);
+          } catch (e) {
+            dataUrl = null;
+          }
+          cached = { img, dataUrl };
+          engine.hookImgCache[option.id] = cached;
         }
         const { img, dataUrl } = cached;
         this.engine.assetOverrides.hook = img;
         this.engine.assets.hook = img;
         this.engine.assetData.hook = dataUrl;
-        this.engine.assetNames.hook = option.label + ".png";
+        this.engine.assetNames.hook = (option.label || option.id) + ".png";
         this.o.hook = true;
         this.selectedHookId = option.id;
-        this.hookName = option.label;
+        this.hookName = option.label || "";
         this.redraw();
         this.notifyHookChange();
       } catch (e) {
@@ -716,18 +739,10 @@ export default {
       }
     },
     hookOptionStyle(option) {
-      const src = option.preview || this.hookOptionSrc(option);
+      const src = option && option.src;
       return src
         ? { backgroundImage: 'url("' + String(src).replace(/"/g, "") + '")' }
         : {};
-    },
-    hookOptionSrc(option) {
-      if (!option) return "";
-      // Every builtin option is immediately usable. A caller may override the
-      // bundled source with `src`; otherwise resolve its id from local assets.
-      if (option.type === "builtin")
-        return option.src || BUILTIN_HOOK_SOURCES[option.id] || hookUrl;
-      return option.src || "";
     },
     createConfig() {
       return {
@@ -743,13 +758,16 @@ export default {
           hook: {
             name: this.engine.assetNames.hook || "hook.png",
             dataUrl: this.engine.assetData.hook || null,
-            builtin:
-              (
-                this.hookOptions.find(
-                  (item) => item.id === this.selectedHookId,
-                ) || {}
-              ).type === "builtin",
+            builtin: !!this.hookOptions.find(
+              (item) => item.id === this.selectedHookId,
+            ),
             selection: this.selectedHookId,
+          },
+          // 外部材质纹理图（仅当当前材质为图片驱动时有值；内置程序化
+          // 材质为 null，恢复方回退程序化渲染）。
+          materialTexture: {
+            name: this.engine.assetNames.materialTexture || null,
+            dataUrl: this.engine.assetData.materialTexture || null,
           },
         },
       };
@@ -773,8 +791,7 @@ export default {
           const selected = this.hookOptions.find(
             (item) => item.id === embedded.selection,
           );
-          if (selected && selected.type === "builtin")
-            await this.selectHook(selected);
+          if (selected) await this.selectHook(selected);
           else this.resetAsset("hook");
           continue;
         }
@@ -799,25 +816,44 @@ export default {
           embedded.name || name + ".png",
         ).slice(0, 120);
         if (name === "hook") {
-          const selected = this.hookOptions.find(
-              (item) => item.id === embedded.selection,
-            ),
-            upload = this.hookOptions.find((item) => item.type === "upload");
           this.hookName = this.engine.assetNames[name];
-          this.selectedHookId = selected
-            ? selected.id
-            : upload
-            ? upload.id
+          // 自定义上传图不在动态数组中，选择态固定 custom。
+          this.selectedHookId = this.hookOptions.find(
+            (item) => item.id === embedded.selection,
+          )
+            ? embedded.selection
             : "custom";
         }
       }
+      // 材质纹理图：随方案恢复（图片驱动材质）；无嵌入则清空，
+      // 回退 o.material 驱动的程序化材质渲染。
+      const mt = config.assets && config.assets.materialTexture;
+      if (mt && mt.dataUrl) {
+        if (
+          typeof mt.dataUrl !== "string" ||
+          mt.dataUrl.length > 22 * 1024 * 1024 ||
+          !/^data:image\/(png|jpeg|webp);base64,/i.test(mt.dataUrl)
+        )
+          throw Error("方案中的材质图片无效或过大。");
+        const img = await loadImage(mt.dataUrl, "");
+        if (img.width * img.height > 25000000)
+          throw Error("方案中的图片像素过大。");
+        this.engine.assetOverrides.materialTexture = img;
+        this.engine.assets.materialTexture = img;
+        this.engine.assetData.materialTexture = mt.dataUrl;
+        this.engine.assetNames.materialTexture = String(
+          mt.name || "material.png",
+        ).slice(0, 120);
+      } else {
+        delete this.engine.assetOverrides.materialTexture;
+        delete this.engine.assets.materialTexture;
+        this.engine.assetData.materialTexture = null;
+        this.engine.assetNames.materialTexture = "";
+      }
       this.setOptions(config.options);
       if (!this.o.hook) {
-        const none = this.hookOptions.find((item) => item.type === "none");
-        if (none) {
-          this.selectedHookId = none.id;
-          this.hookName = none.label;
-        }
+        this.selectedHookId = "none";
+        this.hookName = "无挂扣";
       }
       if (config.export) {
         if ([1000, 1500, 2000].includes(Number(config.export.size)))
@@ -970,12 +1006,15 @@ export default {
               :key="m.id"
               :class="['material', { active: o.material === m.id }]"
               :aria-pressed="o.material === m.id"
-              @click="o.material = m.id"
+              @click="selectMaterial(m)"
             >
               <i
                 :class="m.src ? 'material-thumb' : m.id"
-                :style="m.src ? { backgroundImage: 'url(' + m.src + ')' } : null"
-              ></i><span>{{ m.label }}</span
+                :style="
+                  m.src ? { backgroundImage: 'url(' + m.src + ')' } : null
+                "
+              ></i
+              ><span>{{ m.label }}</span
               ><b v-if="o.material === m.id">✓</b>
             </button>
           </div>
@@ -983,37 +1022,38 @@ export default {
         <section v-if="isPreview">
           <h2>挂扣选择</h2>
           <div class="hook-options">
-            <template v-for="option in hookOptions"
-              ><label
-                v-if="option.type === 'upload'"
-                :key="option.id"
-                :class="{ active: selectedHookId === option.id }"
-                ><i class="hook-upload">＋</i
-                ><span>{{
-                  selectedHookId === option.id ? hookName : option.label
-                }}</span
-                ><input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  @change="
-                    uploadAsset('hook', $event.target.files[0]);
-                    $event.target.value = '';
-                  " /></label
-              ><button
-                v-else
-                :key="option.id"
-                :class="{ active: selectedHookId === option.id }"
-                @click="selectHook(option)"
-              >
-                <i v-if="option.type === 'none'" class="hook-none">×</i
-                ><i
-                  v-else
-                  :class="option.src ? 'hook-preset' : 'hook-thumb'"
-                  :style="hookOptionStyle(option)"
-                ></i
-                ><span>{{ option.label }}</span>
-              </button></template
+            <button
+              key="none"
+              :class="{ active: selectedHookId === 'none' }"
+              @click="selectHook({ id: 'none', label: '无挂扣', src: '' })"
             >
+              <i class="hook-none">×</i><span>无挂扣</span>
+            </button>
+            <button
+              v-for="option in hookOptions"
+              :key="option.id"
+              :class="{ active: selectedHookId === option.id }"
+              @click="selectHook(option)"
+            >
+              <i
+                :class="option.src ? 'hook-preset' : 'hook-none'"
+                :style="hookOptionStyle(option)"
+                >{{ option.src ? "" : "×" }}</i
+              ><span>{{ option.label }}</span>
+            </button>
+            <!-- <label :class="{ active: selectedHookId === 'custom' }"
+              ><i class="hook-upload">＋</i
+              ><span>{{
+                selectedHookId === "custom" ? hookName : "自定义上传"
+              }}</span
+              ><input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                @change="
+                  uploadAsset('hook', $event.target.files[0]);
+                  $event.target.value = '';
+                "
+            /></label> -->
           </div>
         </section>
       </aside>
