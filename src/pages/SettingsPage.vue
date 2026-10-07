@@ -84,6 +84,18 @@
             ><span class="sticker-setting-hint"
               >留空则使用首页侧栏的组件大小</span
             >
+            <label class="toggle-label"
+              >是否启用组件
+              <input
+                type="checkbox"
+                :checked="stickerEnabled === true"
+                @change="
+                  sharedState.stickerEnabled = $event.target.checked;
+                "
+              /> </label
+            ><span class="sticker-setting-hint"
+              >开启后首页设计器自动启用组件（随方案 JSON 复原）</span
+            >
           </div>
         </section>
       </template></AcrylicEditor>
@@ -134,6 +146,9 @@ export default {
     stickerComponentSize() {
       return sharedState.componentSize;
     },
+    stickerEnabled() {
+      return sharedState.stickerEnabled;
+    },
   },
   watch: {
     // 首页修改的全局效果参数同步到本页编辑器（等值时收敛，见 PreviewPage）。
@@ -175,6 +190,7 @@ export default {
       plan.sticker = {
         patterns: JSON.parse(JSON.stringify(sharedState.stickerPatterns)),
         componentSize: sharedState.componentSize,
+        enabled: sharedState.stickerEnabled,
       };
       return plan;
     },
@@ -309,13 +325,18 @@ export default {
         if (editor.setEditingBoard) editor.setEditingBoard(null, null, "");
       }
       if (plan.sticker && typeof plan.sticker === "object") {
-        // 组件设置复原：上传图案列表 + 组件大小（首页 PatternDesigner 消费）。
+        // 组件设置复原：上传图案列表 + 组件大小 + 是否启用组件
+        // （首页 PatternDesigner 消费）。
         sharedState.stickerPatterns = Array.isArray(plan.sticker.patterns)
           ? JSON.parse(JSON.stringify(plan.sticker.patterns))
           : [];
         const size = Number(plan.sticker.componentSize);
         sharedState.componentSize =
           Number.isFinite(size) && size > 0 ? Math.round(size) : null;
+        sharedState.stickerEnabled =
+          typeof plan.sticker.enabled === "boolean"
+            ? plan.sticker.enabled
+            : null;
       }
     },
   },

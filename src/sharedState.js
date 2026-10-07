@@ -31,4 +31,7 @@ export const sharedState = Vue.observable({
   // 设置页指定的组件大小（Fabric 预览像素）；null = 未设置，
   // 首页回退侧栏「组件大小(px)」的值。
   componentSize: null,
+  // 是否启用组件：settings 页/方案 JSON 明确设置时为 true/false；
+  // null = 未设置，首页保持本地手动勾选行为。
+  stickerEnabled: null,
 });

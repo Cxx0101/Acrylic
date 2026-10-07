@@ -49,6 +49,7 @@
         :dpi="patternDpi"
         :component-size="patternComponentSize"
         :sticker-pattern-assets="stickerPatternAssets"
+        :sticker-enabled="stickerEnabledSetting"
         :spec-size="patternSpecSize"
         :interface-tab-enabled="patternInterfaceTabEnabled"
         :interface-guide-width="patternInterfaceGuideWidth"
@@ -215,8 +216,12 @@ export default {
     },
     // 设置页上传的组件图案列表（PatternDesigner 内与内置图案并列可选）。
     stickerPatternAssets() {
-      console.log("🚀 ~ sharedState.stickerPatterns:", sharedState.stickerPatterns)
       return sharedState.stickerPatterns;
+    },
+    // 是否启用组件：settings/方案明确设置时为 true/false；未设置 null
+    // （首页保持本地手动勾选行为）。
+    stickerEnabledSetting() {
+      return sharedState.stickerEnabled;
     },
     patternSpecSize() {
       const value = Number(this.editorOptions && this.editorOptions.specSize);
@@ -386,8 +391,8 @@ export default {
       this.applyPlanSticker(plan);
     },
     // 方案携带组件设置（settings 导出的 sticker 字段）时写回 sharedState：
-    // 上传图案列表 + 组件大小（PatternDesigner 经 props 消费）。旧 JSON 无此
-    // 字段时保持现状不清空，避免冲掉设置页上传的内容。
+    // 上传图案列表 + 组件大小 + 是否启用组件（PatternDesigner 经 props 消费）。
+    // 旧 JSON 无此字段时保持现状不清空，避免冲掉设置页上传的内容。
     applyPlanSticker(plan) {
       const sticker = plan && plan.config && plan.config.sticker;
       if (!sticker || typeof sticker !== "object") return;
@@ -398,6 +403,8 @@ export default {
       const size = Number(sticker.componentSize);
       sharedState.componentSize =
         Number.isFinite(size) && size > 0 ? Math.round(size) : null;
+      sharedState.stickerEnabled =
+        typeof sticker.enabled === "boolean" ? sticker.enabled : null;
     },
     // 把已设计完成的板块（按标识匹配）铺到指定方案的编辑器场景。
     applyPlanBoards(plan) {
@@ -421,6 +428,9 @@ export default {
           hole: state.hole || null,
           shapeRegion: state.shapeRegion || null,
           transform: boardTransform(p, plan.config.options),
+          // 板块级参数（settings 页「无需挂扣」等）随铺板传入，
+          // blockOptions 会以 board.o 覆盖全局效果参数。
+          o: p.o || null,
         };
       });
       editor.setBoards(list);
@@ -512,6 +522,8 @@ export default {
           hole: state.hole || null,
           shapeRegion: state.shapeRegion || null,
           transform: boardTransform(p, plan.config.options),
+          // 板块级参数（settings 页「无需挂扣」等）随铺板传入。
+          o: p.o || null,
         };
       });
       editor.setBoards(list);

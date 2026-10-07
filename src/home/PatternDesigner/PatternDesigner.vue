@@ -60,22 +60,9 @@
           </div>
           <div
             v-show="activeFace === 'front'"
-            style="
-              margin-top: 20px;
-              display: flex;
-              justify-content: space-between;
-            "
+            style="margin-top: 20px"
           >
             <div style="font-weight: bold">组件设置</div>
-            <label class="toggle-label">
-              <input
-                v-model="enableEdgeSticker"
-                type="checkbox"
-                :disabled="processing || !contentBlob"
-                @change="toggleEdgeSticker"
-              />
-              启用组件
-            </label>
           </div>
 
           <div
@@ -267,6 +254,9 @@ export default {
     // 设置页上传的组件图案（{id, label, src}，src 为图片地址）。选中后
     // 组件贴片直接用该图片渲染，替代内置 ring/square SVG 图案。
     stickerPatternAssets: { type: Array, default: () => [] },
+    // 是否启用组件（settings/方案 JSON 控制）。null = 未设置，不干预本地
+    // 手动勾选；true/false 时自动同步启停（含贴片创建/移除）。
+    stickerEnabled: { type: Boolean, default: null },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidthSetting: { type: Number, default: 300 },
     interfaceGuideHeightSetting: { type: Number, default: 52 },
@@ -389,6 +379,15 @@ export default {
         }
         if (this.edgeSticker && !this.processing) this.changeStickerPattern();
       },
+    },
+    stickerEnabled(value) {
+      // settings/方案 JSON 明确设置（true/false）时同步启停；
+      // null = 未设置，保持本地手动勾选行为。
+      if (value === null || value === undefined) return;
+      const next = Boolean(value);
+      if (this.enableEdgeSticker === next) return;
+      this.enableEdgeSticker = next;
+      if (this.fabricCanvas && !this.processing) this.toggleEdgeSticker();
     },
     specSize(value) {
       const next = Number(value);
