@@ -46,6 +46,7 @@
         :cut-line="cutLine"
         :dpi="dpi"
         :component-size="componentSize"
+        :sticker-pattern-assets="stickerPatternAssets"
         :spec-size="
           Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE
         "
@@ -80,6 +81,8 @@ export default {
     cutLine: { type: Number, default: 4 },
     dpi: { type: Number, default: 300 },
     componentSize: { type: Number, default: 50 },
+    // 设置页上传的组件图案列表（{id, label, src}），透传给设计器。
+    stickerPatternAssets: { type: Array, default: () => [] },
     specSize: { type: Number, default: SPEC_DEFAULT_SIZE },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidth: { type: Number, default: 300 },

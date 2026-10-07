@@ -859,6 +859,8 @@ export default {
             /></label>
           </details>
         </section>
+        <!-- 页面层注入的侧栏扩展区（如组件图案上传/组件大小设置） -->
+        <slot name="aside-extra"></slot>
       </aside>
       <div class="workspace">
         <div class="canvas-wrap">

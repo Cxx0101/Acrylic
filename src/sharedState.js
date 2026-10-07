@@ -25,4 +25,10 @@ export const sharedState = Vue.observable({
   ],
   // 两页编辑器共享的全局效果参数（材质类型/阴影/工艺等整包同步）。
   sharedOptions: null,
+  // 组件（挂扣贴片）图案：设置页上传，首页设计器消费。
+  // 项 {id, label, src}，src 为图片 dataURL / 网络地址。
+  stickerPatterns: [],
+  // 设置页指定的组件大小（Fabric 预览像素）；null = 未设置，
+  // 首页回退侧栏「组件大小(px)」的值。
+  componentSize: null,
 });

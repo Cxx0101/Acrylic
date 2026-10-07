@@ -39,6 +39,53 @@
           @change="onBoardsChange"
           @select="onLayoutSelect"
         />
+      </template>
+      <template slot="aside-extra">
+        <section>
+          <h2><span>05</span> 组件设置</h2>
+          <div class="sticker-setting">
+            <div class="sticker-pattern-list">
+              <div
+                v-for="item in stickerPatterns"
+                :key="item.id"
+                class="sticker-pattern-item"
+              >
+                <img :src="item.src" :alt="item.label" />
+                <span :title="item.label">{{ item.label }}</span>
+                <button
+                  type="button"
+                  class="sticker-pattern-remove"
+                  :aria-label="'删除' + item.label"
+                  @click="removeStickerPattern(item.id)"
+                >
+                  ×
+                </button>
+              </div>
+              <label class="sticker-pattern-upload"
+                ><i>＋</i><span>上传 SVG</span
+                ><input
+                  type="file"
+                  accept=".svg,image/svg+xml"
+                  @change="
+                    uploadStickerPattern($event.target.files[0]);
+                    $event.target.value = '';
+                  "
+              /></label>
+            </div>
+            <label class="number-setting"
+              >组件大小(px)
+              <input
+                type="number"
+                min="1"
+                step="1"
+                :value="stickerComponentSize"
+                @change="onStickerComponentSize($event)"
+              /> </label
+            ><span class="sticker-setting-hint"
+              >留空则使用首页侧栏的组件大小</span
+            >
+          </div>
+        </section>
       </template></AcrylicEditor>
   </div>
 </template>
@@ -80,6 +127,13 @@ export default {
     sharedOptions() {
       return sharedState.sharedOptions;
     },
+    // 组件设置（aside-extra 区块）：上传图案与组件大小，随 sharedState 跨页。
+    stickerPatterns() {
+      return sharedState.stickerPatterns;
+    },
+    stickerComponentSize() {
+      return sharedState.componentSize;
+    },
   },
   watch: {
     // 首页修改的全局效果参数同步到本页编辑器（等值时收敛，见 PreviewPage）。
@@ -111,14 +165,23 @@ export default {
       console.error(error);
     },
     // 导出「板块布局 + 效果参数」方案（version 5 = v4 配置 + boards）。
-    exportPlan() {
+    // 组装「板块布局 + 效果参数 + 组件设置」方案对象（v5 + sticker）。
+    // 导出与探针共用：sticker 字段承载组件图案列表与组件大小，
+    // 导入时经 applyPlan 复原回 sharedState。
+    buildPlan() {
       const editor = this.$refs.editor;
-      if (!editor || !editor.createConfig) return;
-      const config = assemblePlan(
-        editor.createConfig(),
-        this.layoutBoards,
-      );
-      const blob = new Blob([JSON.stringify(config, null, 2)], {
+      if (!editor || !editor.createConfig) return null;
+      const plan = assemblePlan(editor.createConfig(), this.layoutBoards);
+      plan.sticker = {
+        patterns: JSON.parse(JSON.stringify(sharedState.stickerPatterns)),
+        componentSize: sharedState.componentSize,
+      };
+      return plan;
+    },
+    exportPlan() {
+      const plan = this.buildPlan();
+      if (!plan) return;
+      const blob = new Blob([JSON.stringify(plan, null, 2)], {
         type: "application/json",
       });
       const url = URL.createObjectURL(blob);
@@ -166,6 +229,35 @@ export default {
     // 页面加载时恢复方案数据。本地缓存已移除：后续在此处调用后端接口
     // 拉到方案后走 applyPlan 复原（同导入 JSON 一条链路）。
     restorePlan() {},
+    // ---- 组件设置：上传组件图案（SVG 矢量）+ 组件大小（写 sharedState 跨页）----
+    uploadStickerPattern(file) {
+      if (!file) return;
+      // 组件贴片为矢量图形：仅接受 SVG（fabric 渲染与轮廓链路都吃 SVG 源）。
+      if (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") {
+        this.onError(Error("组件图案请上传 SVG 矢量文件。"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        sharedState.stickerPatterns = sharedState.stickerPatterns.concat({
+          id: "sp-" + Date.now().toString(36),
+          label: file.name.replace(/\.svg$/i, ""),
+          src: String(reader.result),
+        });
+      };
+      reader.readAsDataURL(file);
+    },
+    removeStickerPattern(id) {
+      sharedState.stickerPatterns = sharedState.stickerPatterns.filter(
+        (item) => item.id !== id,
+      );
+    },
+    onStickerComponentSize(e) {
+      const raw = Number(e.target.value);
+      // 空值/非法值 = 未设置，首页回退侧栏的组件大小。
+      sharedState.componentSize =
+        Number.isFinite(raw) && raw > 0 ? Math.round(raw) : null;
+    },
     // ---- 导入方案 JSON：复原效果参数、背景资产与板块布局 ----
     triggerImportPlan() {
       const input = this.$refs.planFile;
@@ -215,6 +307,15 @@ export default {
         sharedState.planBoards = JSON.parse(JSON.stringify(plan.boards));
         this.settingsBoardId = null;
         if (editor.setEditingBoard) editor.setEditingBoard(null, null, "");
+      }
+      if (plan.sticker && typeof plan.sticker === "object") {
+        // 组件设置复原：上传图案列表 + 组件大小（首页 PatternDesigner 消费）。
+        sharedState.stickerPatterns = Array.isArray(plan.sticker.patterns)
+          ? JSON.parse(JSON.stringify(plan.sticker.patterns))
+          : [];
+        const size = Number(plan.sticker.componentSize);
+        sharedState.componentSize =
+          Number.isFinite(size) && size > 0 ? Math.round(size) : null;
       }
     },
   },

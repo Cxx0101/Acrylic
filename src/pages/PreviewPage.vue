@@ -48,6 +48,7 @@
         :cut-line="patternCutLine"
         :dpi="patternDpi"
         :component-size="patternComponentSize"
+        :sticker-pattern-assets="stickerPatternAssets"
         :spec-size="patternSpecSize"
         :interface-tab-enabled="patternInterfaceTabEnabled"
         :interface-guide-width="patternInterfaceGuideWidth"
@@ -203,10 +204,19 @@ export default {
       return Number.isFinite(value) ? value : 300;
     },
     patternComponentSize() {
+      // 设置页「组件大小」优先；未设置回退首页侧栏的组件大小。
+      const fromSettings = Number(sharedState.componentSize);
+      if (Number.isFinite(fromSettings) && fromSettings > 0)
+        return fromSettings;
       const value = Number(
         this.editorOptions && this.editorOptions.stickerSize,
       );
       return Number.isFinite(value) ? value : 50;
+    },
+    // 设置页上传的组件图案列表（PatternDesigner 内与内置图案并列可选）。
+    stickerPatternAssets() {
+      console.log("🚀 ~ sharedState.stickerPatterns:", sharedState.stickerPatterns)
+      return sharedState.stickerPatterns;
     },
     patternSpecSize() {
       const value = Number(this.editorOptions && this.editorOptions.specSize);
@@ -373,6 +383,21 @@ export default {
         console.error("方案加载失败", e);
       }
       this.applyPlanBoards(plan);
+      this.applyPlanSticker(plan);
+    },
+    // 方案携带组件设置（settings 导出的 sticker 字段）时写回 sharedState：
+    // 上传图案列表 + 组件大小（PatternDesigner 经 props 消费）。旧 JSON 无此
+    // 字段时保持现状不清空，避免冲掉设置页上传的内容。
+    applyPlanSticker(plan) {
+      const sticker = plan && plan.config && plan.config.sticker;
+      if (!sticker || typeof sticker !== "object") return;
+      if (Array.isArray(sticker.patterns))
+        sharedState.stickerPatterns = JSON.parse(
+          JSON.stringify(sticker.patterns),
+        );
+      const size = Number(sticker.componentSize);
+      sharedState.componentSize =
+        Number.isFinite(size) && size > 0 ? Math.round(size) : null;
     },
     // 把已设计完成的板块（按标识匹配）铺到指定方案的编辑器场景。
     applyPlanBoards(plan) {
@@ -432,6 +457,13 @@ export default {
               o: b.o,
               specSize: b.specSize,
             })),
+            // 当前组件设置随方案保留（重激活/导出时不丢）。
+            sticker: {
+              patterns: JSON.parse(
+                JSON.stringify(sharedState.stickerPatterns || []),
+              ),
+              componentSize: sharedState.componentSize,
+            },
           },
           imageUrl: "",
           imageBlob: null,

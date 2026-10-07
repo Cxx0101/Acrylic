@@ -91,70 +91,28 @@
                 aria-label="组件图案"
               >
                 <button
+                  v-for="asset in stickerPatternAssets"
+                  :key="asset.id"
                   type="button"
-                  :class="{ active: stickerPattern === 'ring' }"
-                  :aria-checked="stickerPattern === 'ring'"
+                  :class="{ active: selectedStickerAsset === asset.id }"
+                  :aria-checked="selectedStickerAsset === asset.id"
                   :disabled="processing || !enableEdgeSticker"
                   role="radio"
-                  @click="selectStickerPattern('ring')"
+                  :title="asset.label"
+                  @click="selectStickerPattern(asset.id)"
                 >
-                  <svg
-                    t="1787904690542"
-                    class="icon"
-                    viewBox="0 0 1024 1024"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    p-id="1708"
-                    width="48"
-                    height="48"
-                  >
-                    <path
-                      d="M512 44.8C252.8 44.8 44.8 256 44.8 512S252.8 979.2 512 979.2 976 768 976 512 768 44.8 512 44.8z m0 870.4C288 915.2 108.8 732.8 108.8 512S288 108.8 512 108.8C732.8 108.8 915.2 288 915.2 512S732.8 915.2 512 915.2z"
-                      fill="#1296db"
-                      p-id="1709"
-                    ></path>
-                    <path
-                      d="M512 236.8c-150.4 0-272 124.8-272 278.4 0 153.6 121.6 278.4 272 278.4s272-124.8 272-278.4c0-153.6-121.6-278.4-272-278.4z m0 496c-115.2 0-208-96-208-214.4s92.8-214.4 208-214.4 208 96 208 214.4-92.8 214.4-208 214.4z"
-                      fill="#1296db"
-                      p-id="1710"
-                    ></path>
-                  </svg>
-                  <span>图案一</span>
+                  <img
+                    class="sticker-pattern-thumb"
+                    :src="asset.src"
+                    :alt="asset.label"
+                  />
+                  <span>{{ asset.label }}</span>
                 </button>
-                <button
-                  type="button"
-                  :class="{ active: stickerPattern === 'square' }"
-                  :aria-checked="stickerPattern === 'square'"
-                  :disabled="processing || !enableEdgeSticker"
-                  role="radio"
-                  @click="selectStickerPattern('square')"
+                <span
+                  v-if="!stickerPatternAssets.length"
+                  class="sticker-pattern-empty"
+                  >导入方案后显示方案中的组件图案</span
                 >
-                  <svg
-                    width="64"
-                    height="64"
-                    viewBox="0 0 64 64"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <!-- 外框 -->
-                    <path
-                      d="M4 62 V32 A28 28 0 0 1 60 32 V62 H4 Z"
-                      fill="none"
-                      stroke="#1296DB"
-                      stroke-width="6"
-                    />
-
-                    <!-- 内部圆环 -->
-                    <circle
-                      cx="32"
-                      cy="28"
-                      r="11"
-                      fill="none"
-                      stroke="#1296DB"
-                      stroke-width="4"
-                    />
-                  </svg>
-                  <span>图案二</span>
-                </button>
               </span>
             </label>
           </div>
@@ -257,7 +215,10 @@
   </div>
 </template>
 <script>
-import { buildPillowSheetContour, downloadBlob } from "../../utils/home/pillowContour";
+import {
+  buildPillowSheetContour,
+  downloadBlob,
+} from "../../utils/home/pillowContour";
 import { fabric } from "fabric";
 import {
   getMaximumDiameterPair,
@@ -266,34 +227,6 @@ import {
   mergeLocalContourPixels,
   selectSmoothContourPoint,
 } from "../../utils/home/localContour";
-
-function buildStickerSvg(pattern, cutLine, renderedSize) {
-  const size = Math.max(1, Number(renderedSize) || 1);
-  const visibleStroke = Math.max(0, Number(cutLine) || 0);
-  if (pattern === "square") {
-    const strokeWidth = Math.min(64, (visibleStroke / size) * 64);
-    const halfStroke = strokeWidth / 2;
-    const left = halfStroke;
-    const right = 64 - halfStroke;
-    const radius = Math.max(0, (right - left) / 2);
-    const topY = 32;
-    const bottom = 64 - halfStroke;
-    return `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-      <path d="M${left} ${bottom} V${topY} A${radius} ${radius} 0 0 1 ${right} ${topY} V${bottom} H${left} Z"
-        fill="none" stroke="#1296DB" stroke-width="${strokeWidth}" stroke-linejoin="round" />
-      <circle cx="32" cy="28" r="11" fill="none" stroke="#1296DB" stroke-width="4" />
-    </svg>`;
-  }
-  // Keep one outer loop and one inner hole. The previous SVG combined a
-  // separate outer circle with a second, overlapping compound ring, which
-  // made the contour tracer treat the component as multiple loops.
-  const strokeWidth = Math.max(3, Math.min(12, (visibleStroke / size) * 64));
-  const radius = 32 - strokeWidth / 2;
-  return `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="32" cy="32" r="${radius}" fill="none" stroke="#1296DB" stroke-width="${strokeWidth}" />
-    <circle cx="32" cy="32" r="11" fill="none" stroke="#1296DB" stroke-width="4" />
-  </svg>`;
-}
 
 function renderStickerRotateControl(ctx, left, top, styleOverride, target) {
   const size = (styleOverride && styleOverride.cornerSize) || 24;
@@ -331,6 +264,9 @@ export default {
     componentSize: { type: Number, default: 50 },
     // 成品最长边的物理规格（cm），与左侧栏“规格”选择联动。默认 5cm = SPEC_SIZES[0]。
     specSize: { type: Number, default: 5 },
+    // 设置页上传的组件图案（{id, label, src}，src 为图片地址）。选中后
+    // 组件贴片直接用该图片渲染，替代内置 ring/square SVG 图案。
+    stickerPatternAssets: { type: Array, default: () => [] },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidthSetting: { type: Number, default: 300 },
     interfaceGuideHeightSetting: { type: Number, default: 52 },
@@ -365,6 +301,11 @@ export default {
       enableEdgeSticker: !this.interfaceTabEnabled,
       enableInterfaceTab: this.interfaceTabEnabled,
       stickerPattern: "ring",
+      // 当前选中的组件图案 id（来自方案导入的 stickerPatternAssets）；
+      // null = 未选中（方案没有组件图案时不创建贴片）。
+      selectedStickerAsset: null,
+      // 无图案提示用的临时定时器句柄（3s 自动清除提示文案）。
+      noticeTimer: null,
       interfaceGuideWidth: this.interfaceGuideWidthSetting,
       interfaceGuideHeight: this.interfaceGuideHeightSetting,
       interfaceTabWidth: this.interfaceTabWidthSetting,
@@ -429,6 +370,25 @@ export default {
         ? Math.max(1, Math.round(next))
         : 50;
       if (this.edgeSticker && !this.processing) this.applyStickerSize();
+    },
+    stickerPatternAssets: {
+      deep: true,
+      handler(list) {
+        const items = list || [];
+        // 选中项随方案替换而消失：清空选中（无内置图案可回退），
+        // addDefaultSticker 会移除旧贴片并因无图案而不重建。
+        if (
+          this.selectedStickerAsset &&
+          !items.some((item) => item.id === this.selectedStickerAsset)
+        ) {
+          this.selectedStickerAsset = null;
+        }
+        // 新方案图案入列且当前未选中：自动选中最新一项（导入即用）。
+        if (items.length && !this.selectedStickerAsset) {
+          this.selectedStickerAsset = items[items.length - 1].id;
+        }
+        if (this.edgeSticker && !this.processing) this.changeStickerPattern();
+      },
     },
     specSize(value) {
       const next = Number(value);
@@ -1573,14 +1533,14 @@ export default {
       tab.setCoords();
     },
 
-    getStickerSvgUrl() {
-      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-        buildStickerSvg(
-          this.stickerPattern,
-          this.form.cutLine,
-          this.stickerSize,
-        ),
-      )}`;
+    // 组件贴片图形源：完全来自方案导入的组件图案（stickerPatternAssets）。
+    // 无选中图案时返回空串——调用方（addDefaultSticker）据此不创建贴片。
+    getStickerImageUrl() {
+      console.log("🚀 ~ this.selectedStickerAsset:", this.selectedStickerAsset);
+      const asset = this.stickerPatternAssets.find(
+        (item) => item.id === this.selectedStickerAsset,
+      );
+      return asset && asset.src ? asset.src : "";
     },
 
     refreshStickerSvgSource() {
@@ -1588,7 +1548,7 @@ export default {
       return new Promise((resolve) => {
         this.edgeSticker.outerMaskCache = null;
         this.edgeSticker.intersectingStickerCenter = null;
-        this.edgeSticker.setSrc(this.getStickerSvgUrl(), resolve, {
+        this.edgeSticker.setSrc(this.getStickerImageUrl(), resolve, {
           crossOrigin: "anonymous",
         });
       });
@@ -1601,6 +1561,7 @@ export default {
       // always look exactly like the value the user entered.
       const size = Math.max(1, Math.round(Number(this.stickerSize) || 50));
       this.stickerSize = size;
+      console.log("🚀 ~  this.stickerSize:",  this.stickerSize)
       if (refreshSvg) await this.refreshStickerSvgSource();
       const sourceWidth = this.edgeSticker.width || 64;
       const scale = size / sourceWidth;
@@ -1616,16 +1577,21 @@ export default {
       this.fitArtworkToDimensionLimit();
     },
 
-    async selectStickerPattern(pattern) {
+    async selectStickerPattern(patternId) {
       if (
-        pattern === this.stickerPattern ||
+        patternId === this.selectedStickerAsset ||
         this.processing ||
         this.isBackFace() ||
         !this.enableEdgeSticker
       ) {
         return;
       }
-      this.stickerPattern = pattern;
+      // 组件图案全部来自方案导入（stickerPatternAssets），无内置预设。
+      const asset = this.stickerPatternAssets.find(
+        (item) => item.id === patternId,
+      );
+      if (!asset || !asset.src) return;
+      this.selectedStickerAsset = patternId;
       await this.changeStickerPattern();
     },
 
@@ -1654,6 +1620,17 @@ export default {
 
     async addDefaultSticker() {
       if (!this.snapContour.length) return;
+      // 组件图案完全来自方案导入：无图案时不创建贴片。
+      const stickerUrl = this.getStickerImageUrl();
+      console.log("🚀 ~ stickerUrl:", stickerUrl);
+      if (!stickerUrl) {
+        this.error = "当前方案没有组件图案，请导入包含组件设置的方案";
+        clearTimeout(this.noticeTimer);
+        this.noticeTimer = setTimeout(() => {
+          this.error = "";
+        }, 3000);
+        return;
+      }
       const currentPosition = this.edgeSticker
         ? {
             left: this.edgeSticker.left,
@@ -1665,7 +1642,7 @@ export default {
         this.fabricCanvas.remove(this.edgeSticker);
       }
 
-      const sticker = await this.loadFabricImage(this.getStickerSvgUrl());
+      const sticker = await this.loadFabricImage(stickerUrl);
       sticker.set({
         left: currentPosition ? currentPosition.left : this.snapContour[0].x,
         top: currentPosition ? currentPosition.top : this.snapContour[0].y,
@@ -4636,14 +4613,14 @@ export default {
   cursor: not-allowed;
 }
 
-.sticker-pattern-buttons svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+/* 组件图案为方案导入的 SVG 缩略图（.sticker-pattern-thumb），
+   内置图案已移除，svg 通用样式随之删除 */
+
+/* 设置页上传的组件图案缩略图 */
+.sticker-pattern-thumb {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .form-grid input,

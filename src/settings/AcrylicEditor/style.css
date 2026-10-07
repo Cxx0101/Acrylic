@@ -638,3 +638,99 @@ canvas {
     color: #2d5548;
     font-weight: 600
 }
+
+/* 组件设置（aside-extra 页面注入）：图案上传列表 + 组件大小 */
+.sticker-setting {
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+.sticker-pattern-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px
+}
+
+.sticker-pattern-item,
+.sticker-pattern-upload {
+    position: relative;
+    width: 72px;
+    padding: 6px;
+    border: 1px solid #d8dfdb;
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #617069;
+    text-align: center
+}
+
+.sticker-pattern-item img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain
+}
+
+.sticker-pattern-item span,
+.sticker-pattern-upload span {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis
+}
+
+.sticker-pattern-item span {
+    margin-right: 14px
+}
+
+.sticker-pattern-remove {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 16px;
+    height: 16px;
+    border: 0;
+    border-radius: 50%;
+    background: #edf1ee;
+    color: #738079;
+    font-size: 12px;
+    line-height: 16px;
+    padding: 0;
+    cursor: pointer
+}
+
+.sticker-pattern-upload {
+    cursor: pointer;
+    color: #738079
+}
+
+.sticker-pattern-upload i {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #edf1ee;
+    color: #738079;
+    font-size: 20px;
+    font-style: normal;
+    display: grid;
+    place-items: center
+}
+
+.sticker-pattern-upload input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer
+}
+
+.sticker-setting-hint {
+    display: block;
+    font-size: 11px;
+    color: #8a9590;
+    margin-top: -4px
+}
