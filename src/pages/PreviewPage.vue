@@ -105,25 +105,74 @@ import { sharedState } from "../sharedState.js";
 function boardTag(board) {
   return (board && (board.tag || board.name)) || "";
 }
-// 效果图板块变换：板顶不动点 + 规格比例缩放。缩放以「板顶」为不动点
+// 效果图板块变换。
+// 有刀线：板顶不动点 + 规格比例缩放。缩放以「板顶」为不动点
 // （板顶恒对齐锚点 by）：挂扣贴板顶孔位、任何规格下都完整可见。
-function boardTransform(board, editorOptions) {
+// 无刀线：可横纵独立拉伸的矩形框（board.w × board.h，500 空间）。
+// 拉伸尺寸对应「最小 scale 规格（5cm, scale=1）」的效果图大小；按图案
+// 宽高比以「最大宽度 / 最大高度」自适应（contain 适配）。图片（设计成品
+// 板体）中心对准框中心，旋转绕图片中心生效（忽略板块 scale）。plate 为
+// 设计成品的内容包围盒尺寸（像素，可空），用于取图案宽高比。
+function boardTransform(board, editorOptions, plate) {
   const sceneX = Number(editorOptions && editorOptions.productX) || 0;
   const sceneY = Number(editorOptions && editorOptions.productY) || 0;
   const sceneScale =
     (Number(editorOptions && editorOptions.productScale) || 100) / 100;
-  const boardScale = Number(board.scale) || 1;
-  const s = sceneScale * boardScale;
   const rawSpec = Number.isFinite(
     Number(editorOptions && editorOptions.specSize),
   )
     ? Number(editorOptions.specSize)
     : Number(board.specSize);
   const k = specRatio(rawSpec);
-  const S = s * k;
   // 注意不能用 `|| 默认值`：0 是合法坐标（画布左/上边缘）。
   const bx = Number.isFinite(Number(board.x)) ? Number(board.x) : 250;
   const by = Number.isFinite(Number(board.y)) ? Number(board.y) : 255;
+  if (!board.cutlineSvg) {
+    const w0 = Number(board.w) || 160;
+    const h0 = Number(board.h) || 160;
+    const pw = plate && plate.w > 0 ? plate.w : 1;
+    const ph = plate && plate.h > 0 ? plate.h : 1;
+    const patAspect = pw / ph;
+    const boxAspect = w0 / h0;
+    // contain 适配：以「最大宽度」或「最大高度」为基准自适应，不拉伸变形。
+    // 宽>高(landscape) → 用框宽；高>宽(portrait) → 用框高。
+    let plateW0;
+    let plateH0;
+    if (patAspect >= boxAspect) {
+      plateW0 = w0;
+      plateH0 = w0 / patAspect;
+    } else {
+      plateH0 = h0;
+      plateW0 = h0 * patAspect;
+    }
+    // 镜像 render.js makeShape 的板体适配：fit = min(200/高, 220/宽)。
+    const fitScale = Math.min(200 / ph, 220 / pw);
+    const wFit = pw * fitScale;
+    const hFit = ph * fitScale;
+    // 框尺寸对应最小 scale 规格（k=1）效果图；所选规格按 k 放大。
+    const transformScale = (plateW0 * k) / wFit;
+    const sEff = sceneScale * transformScale;
+    // 图片（板体）中心对准框中心 C = (bx, by + h0/2)。渲染端旋转/缩放绕
+    // transform 锚点（画布中心 + offset）进行，板体中心相对画布中心偏
+    // (0, 5 + hFit/2)（板体顶在 y=255），乘 sEff 后记为 d；要绕图片中心
+    // 旋转，需令锚点 = C − R(θ)·(0, d)，canvas 顺时针旋转下
+    // (0, d) → (−d·sinθ, d·cosθ)。θ=0 时退化为纯中心对齐。
+    const rotation = Number(board.rotation) || 0;
+    const rad = (rotation * Math.PI) / 180;
+    const d = sEff * (5 + hFit / 2);
+    const offX = bx + d * Math.sin(rad) - 250 - sceneX;
+    const offY = by + h0 / 2 - d * Math.cos(rad) - 250 - sceneY;
+    return {
+      offsetX: Math.round(offX),
+      offsetY: Math.round(offY),
+      scale: transformScale,
+      rotation,
+      z: Number(board.z) || 0,
+    };
+  }
+  const boardScale = Number(board.scale) || 1;
+  const s = sceneScale * boardScale;
+  const S = s * k;
   return {
     offsetX: Math.round(bx - 250 - sceneX),
     offsetY: Math.round(by - 5 * S - 250 - sceneY),
@@ -154,6 +203,9 @@ export default {
       activePlanId: null,
       // 设计完成状态：tag -> { blob, hole, shapeRegion, filename }（仅运行时）。
       designStates: {},
+      // 设计成品内容包围盒尺寸：tag -> { w, h }（仅运行时）。
+      // 无刀线板块效果端「图片中心对准小框中心」的板体 fit 高度来源。
+      plateSizes: {},
       // 编辑器每次 setBoards 重初始化都会再发 ready，方案恢复只执行一次。
       restored: false,
     };
@@ -427,7 +479,11 @@ export default {
           src: url,
           hole: state.hole || null,
           shapeRegion: state.shapeRegion || null,
-          transform: boardTransform(p, plan.config.options),
+          transform: boardTransform(
+            p,
+            plan.config.options,
+            this.plateSizes[boardTag(p)] || null,
+          ),
           // 板块级参数（settings 页「无需挂扣」等）随铺板传入，
           // blockOptions 会以 board.o 覆盖全局效果参数。
           o: p.o || null,
@@ -446,6 +502,11 @@ export default {
           filename: b.filename || b.tag + ".png",
         });
       });
+      // 无刀线板块中心对齐需要成品内容尺寸：先读齐再进入渲染链路。
+      for (const b of boards) {
+        const size = await this.readPlateSize(b.blob);
+        if (size) this.$set(this.plateSizes, b.tag, size);
+      }
       // 未导入方案时自动建一个「默认方案」：以当前设计板块为布局，
       // 保证「生成效果图」在没有导入 JSON 时也有产出落点。
       if (!this.plans.length) {
@@ -461,6 +522,8 @@ export default {
               name: b.name || b.tag,
               x: b.x,
               y: b.y,
+              w: b.w,
+              h: b.h,
               scale: b.scale,
               rotation: b.rotation,
               z: b.z,
@@ -483,6 +546,56 @@ export default {
         this.activePlanId = plan.id;
       }
       await this.distributeEffects();
+    },
+    // 读取设计成品的「内容包围盒」尺寸（透明边不计入，alpha>80 与
+    // render.js prepareArt 同口径），保证板体 fit 高度精确；失败返 null。
+    readPlateSize(blob) {
+      return new Promise((resolve) => {
+        if (!blob) {
+          resolve(null);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const c = document.createElement("canvas");
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            const d = ctx.getImageData(0, 0, c.width, c.height).data;
+            let l = c.width,
+              t = c.height,
+              r = -1,
+              btm = -1;
+            for (let y = 0; y < c.height; y++) {
+              for (let x = 0; x < c.width; x++) {
+                if (d[(y * c.width + x) * 4 + 3] > 80) {
+                  if (x < l) l = x;
+                  if (x > r) r = x;
+                  if (y < t) t = y;
+                  if (y > btm) btm = y;
+                }
+              }
+            }
+            resolve(
+              r >= 0
+                ? { w: r - l + 1, h: btm - t + 1 }
+                : { w: img.naturalWidth, h: img.naturalHeight },
+            );
+          } catch (e) {
+            resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        };
+        img.onerror = () => {
+          resolve(null);
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      });
     },
     async distributeEffects() {
       if (this.distributing) return;
@@ -521,7 +634,11 @@ export default {
           src: url,
           hole: state.hole || null,
           shapeRegion: state.shapeRegion || null,
-          transform: boardTransform(p, plan.config.options),
+          transform: boardTransform(
+            p,
+            plan.config.options,
+            this.plateSizes[boardTag(p)] || null,
+          ),
           // 板块级参数（settings 页「无需挂扣」等）随铺板传入。
           o: p.o || null,
         };
@@ -564,6 +681,7 @@ export default {
       this.plans = [];
       this.activePlanId = null;
       this.designStates = {};
+      this.plateSizes = {};
       this.revokeBoardUrls();
       if (this.$refs.editor && this.$refs.editor.setBoards) {
         this.$refs.editor.setBoards([]);

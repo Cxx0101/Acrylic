@@ -17,11 +17,25 @@
       >
         <span class="board-label">{{ board.name }}</span>
         <template v-if="board.id === selectedId">
-          <div
-            class="board-handle board-handle--scale"
-            title="拖拽缩放"
-            @pointerdown.stop.prevent="startHandle(board, 'scale', $event)"
-          ></div>
+          <template v-if="board.cutlineSvg">
+            <div
+              class="board-handle board-handle--scale"
+              title="拖拽缩放"
+              @pointerdown.stop.prevent="startHandle(board, 'scale', $event)"
+            ></div>
+          </template>
+          <template v-else>
+            <div
+              class="board-handle board-handle--w"
+              title="拖拽调整宽度"
+              @pointerdown.stop.prevent="startHandle(board, 'w', $event)"
+            ></div>
+            <div
+              class="board-handle board-handle--h"
+              title="拖拽调整高度"
+              @pointerdown.stop.prevent="startHandle(board, 'h', $event)"
+            ></div>
+          </template>
           <div
             class="board-handle board-handle--rotate"
             title="拖拽旋转"
@@ -85,6 +99,24 @@
             @input="setProp('rotation', $event.target.value)"
           />
         </label>
+        <label v-if="!selected.cutlineSvg" class="board-prop">
+          宽度<input
+            type="number"
+            step="1"
+            min="40"
+            :value="selected.w"
+            @input="setProp('w', $event.target.value)"
+          />
+        </label>
+        <label v-if="!selected.cutlineSvg" class="board-prop">
+          高度<input
+            type="number"
+            step="1"
+            min="40"
+            :value="selected.h"
+            @input="setProp('h', $event.target.value)"
+          />
+        </label>
         <label class="board-prop">
           层级<input
             type="number"
@@ -105,6 +137,12 @@
 const BASE_W = 200;
 // 板体经 makeShape 适配后的最大高度（fit 上限 220），占位框 = 板体可能区域。
 const BASE_H = 220;
+// 无刀线板块：可横/纵独立拉伸的矩形框（500 画布空间），拉伸尺寸对应
+// 「最小 scale 规格（5cm, scale=1）」的效果图大小；效果图端按图案宽高比
+// 以「最大宽度 / 最大高度」自适应（见 PreviewPage.boardTransform）。
+const NO_CUTLINE_DEFAULT = 160;
+const NO_CUTLINE_MIN = 40;
+const NO_CUTLINE_MAX = 300;
 // 读取 SVG 根节点的物理尺寸（支持 mm/cm/in/px），随方案 JSON 传给设计端做标注。
 function readSvgSize(svgText) {
   const root = new DOMParser().parseFromString(
@@ -167,6 +205,16 @@ export default {
     selectedId(value) {
       if (value) this.$emit("select", value);
     },
+    // 板块集合变化时补齐无刀线板块的 w/h：导入 JSON / 旧数据的板块可能
+    // 没有这两个字段，Vue 2 对新增属性直接赋值不是响应式的，必须 $set，
+    // 否则后续拖拽/输入赋值都不会更新视图。
+    boards: {
+      immediate: true,
+      deep: true,
+      handler(values) {
+        (values || []).forEach((b) => this.ensureStretchable(b));
+      },
+    },
   },
   mounted() {
     if (!this.selectedId && this.boards.length) {
@@ -199,6 +247,7 @@ export default {
         height: h / 5 + "%",
         // y 是板块区域顶部：框从该点向下延展、旋转绕顶部中心，
         // 与合成端“板体顶对齐框顶”的锚点保持一致。
+        // 无刀线板块同样支持旋转：效果图端绕图片中心（框中心）旋转。
         transform:
           "translate(-50%, 0) rotate(" +
           (Number(board.rotation) + this.sceneRotation) +
@@ -207,8 +256,14 @@ export default {
         zIndex: 10 + (Number(board.z) || 0),
       };
     },
-    // 板块占位框在 500 空间的宽高（SVG 刀线板块按宽高比适配）。
+    // 板块占位框在 500 空间的宽高（SVG 刀线板块按宽高比适配；
+    // 无刀线板块 = 可拉伸矩形框，尺寸即最小规格效果图大小）。
     boardSize(board) {
+      if (!board.cutlineSvg) {
+        const w = Number(board.w) || NO_CUTLINE_DEFAULT;
+        const h = Number(board.h) || NO_CUTLINE_DEFAULT;
+        return { w: w * this.sceneScale, h: h * this.sceneScale };
+      }
       let baseW = BASE_W;
       let baseH = BASE_H;
       if (
@@ -259,6 +314,17 @@ export default {
       this.dragging = null;
       this.handleState = null;
     },
+    // 无刀线板块需要 w/h 两个可拉伸尺寸；缺省（旧 JSON / 导入数据）时用
+    // $set 补齐，保证后续拖拽/输入赋值是响应式的。
+    ensureStretchable(board) {
+      if (!board || board.cutlineSvg) return;
+      if (!Number.isFinite(Number(board.w))) {
+        this.$set(board, "w", NO_CUTLINE_DEFAULT);
+      }
+      if (!Number.isFinite(Number(board.h))) {
+        this.$set(board, "h", NO_CUTLINE_DEFAULT);
+      }
+    },
     // 手柄按下：记录旋转/缩放轴心与初始值。
     // 缩放轴心 = 顶部中心锚点（x,y，与合成端缩放一致）；
     // 旋转轴心 = 板块中心——合成端绕顶部中心旋转，因此拖拽时同步反算
@@ -269,6 +335,11 @@ export default {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
+      if (mode === "w" || mode === "h") {
+        this.ensureStretchable(board);
+        this.handleState = { mode, board, rect };
+        return;
+      }
       const toScreen = (p) => ({
         x: rect.left + (p.x / 500) * rect.width,
         y: rect.top + (p.y / 500) * rect.height,
@@ -306,6 +377,38 @@ export default {
     onHandleMove(e) {
       const h = this.handleState;
       if (!h) return;
+      if (h.mode === "w" || h.mode === "h") {
+        // 显示框宽高 = board.w/h × sceneScale，且框可能带旋转（板块角度 +
+        // 场景角度）：先把指针位置反旋转到框的本地坐标系，再反算宽高。
+        const scale = this.sceneScale || 1;
+        const h0 = (Number(h.board.h) || NO_CUTLINE_DEFAULT) * scale;
+        const cx = Number(h.board.x) || 0;
+        const cy = (Number(h.board.y) || 0) + h0 / 2;
+        const theta =
+          ((Number(h.board.rotation) || 0) + this.sceneRotation) *
+          (Math.PI / 180);
+        const px = ((e.clientX - h.rect.left) / h.rect.width) * 500 - cx;
+        const py = ((e.clientY - h.rect.top) / h.rect.height) * 500 - cy;
+        const cos = Math.cos(-theta);
+        const sin = Math.sin(-theta);
+        const localX = px * cos - py * sin;
+        const localY = px * sin + py * cos;
+        if (h.mode === "w") {
+          const next = Math.max(
+            NO_CUTLINE_MIN,
+            Math.min(NO_CUTLINE_MAX, (2 * localX) / scale),
+          );
+          this.$set(h.board, "w", Math.round(next));
+        } else {
+          const next = Math.max(
+            NO_CUTLINE_MIN,
+            Math.min(NO_CUTLINE_MAX, (localY + h0 / 2) / scale),
+          );
+          this.$set(h.board, "h", Math.round(next));
+        }
+        this.emitChange();
+        return;
+      }
       if (h.mode === "scale") {
         const startDist =
           Math.hypot(h.startX - h.pivot.x, h.startY - h.pivot.y) || 1;
@@ -344,6 +447,8 @@ export default {
     onWheel(e, board) {
       const target = board || this.selected;
       if (!target) return;
+      // 无刀线板块（小框）不可缩放：滚轮只用于画布/页面滚动。
+      if (!target.cutlineSvg) return;
       this.selectedId = target.id;
       e.preventDefault();
       const dir = e.deltaY > 0 ? -0.05 : 0.05;
@@ -367,7 +472,9 @@ export default {
         tag,
         name: "板块" + (this.boards.length + 1),
         x: 250,
-        y: 140, // 250 − 框高 220/2，初始垂直居中
+        y: 250 - NO_CUTLINE_DEFAULT / 2, // 默认框（160×160）垂直居中
+        w: NO_CUTLINE_DEFAULT,
+        h: NO_CUTLINE_DEFAULT,
         scale: 1,
         rotation: 0,
         z: this.boards.length,
@@ -430,6 +537,7 @@ export default {
       this.$delete(board, "cutlineName");
       this.$delete(board, "sourceSize");
       this.$delete(board, "svgAspect");
+      this.ensureStretchable(board);
       this.emitChange();
     },
     setProp(key, value) {
@@ -437,6 +545,15 @@ export default {
       if (!board) return;
       let next = Number(value);
       if (!Number.isFinite(next)) return;
+      if (key === "w" || key === "h") {
+        next = Math.max(
+          NO_CUTLINE_MIN,
+          Math.min(NO_CUTLINE_MAX, Math.round(next)),
+        );
+        this.$set(board, key, next);
+        this.emitChange();
+        return;
+      }
       if (key === "scale") {
         next = Math.max(SCALE_MIN, Math.min(SCALE_MAX, next));
         next = Math.round(next * 100) / 100;
@@ -568,14 +685,14 @@ export default {
   z-index: 2;
 }
 .board-handle--scale {
-  right: -9px;
+  left: -9px;
   bottom: -9px;
   cursor: nwse-resize;
 }
 .board-handle--rotate {
-  left: 50%;
-  bottom: -30px;
-  margin-left: -8px;
+  right: -9px;
+  bottom: -9px;
+  margin: 0;
   background: #2a7d6e;
   cursor: grab;
 }
@@ -583,11 +700,25 @@ export default {
   content: "";
   position: absolute;
   left: 50%;
-  bottom: 14px;
-  width: 2px;
-  height: 14px;
-  margin-left: -1px;
-  background: #2a7d6e;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.board-handle--w {
+  right: -9px;
+  top: 50%;
+  margin-top: -8px;
+  cursor: ew-resize;
+}
+.board-handle--h {
+  left: 50%;
+  bottom: -9px;
+  margin-left: -8px;
+  cursor: ns-resize;
 }
 .board-prop {
   display: flex;
