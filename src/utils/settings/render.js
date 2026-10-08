@@ -25,12 +25,21 @@ function fillHoles(a, n) { const seen = new Uint8Array(n * n), q = new Int32Arra
 function expand(a, n, r) { const d = new Float32Array(n * n); for (let i = 0; i < d.length; i++)d[i] = a[i] ? 0 : 1e5; const diag = Math.SQRT2; for (let y = 0; y < n; y++)for (let x = 0; x < n; x++) { const i = y * n + x; if (x) d[i] = Math.min(d[i], d[i - 1] + 1); if (y) { d[i] = Math.min(d[i], d[i - n] + 1); if (x) d[i] = Math.min(d[i], d[i - n - 1] + diag); if (x < n - 1) d[i] = Math.min(d[i], d[i - n + 1] + diag) } } for (let y = n - 1; y >= 0; y--)for (let x = n - 1; x >= 0; x--) { const i = y * n + x; if (x < n - 1) d[i] = Math.min(d[i], d[i + 1] + 1); if (y < n - 1) { d[i] = Math.min(d[i], d[i + n] + 1); if (x) d[i] = Math.min(d[i], d[i + n - 1] + diag); if (x < n - 1) d[i] = Math.min(d[i], d[i + n + 1] + diag) } } return d.map(v => v <= r ? 1 : 0) }
 export function makeShape(art, o) {
     const n = SIZE, c = canvas(), ctx = c.getContext('2d'), [sx, sy, sw, sh] = art.box; const scale = Math.min(200 / sh, 220 / sw), w = sw * scale, h = sh * scale; const rect = [250 - w / 2, 255, w, h]; ctx.drawImage(art.img, sx, sy, sw, sh, ...rect); if (art.shapeRegion) { const rw = art.shapeRegion.naturalWidth || art.shapeRegion.width, rh = art.shapeRegion.naturalHeight || art.shapeRegion.height; ctx.drawImage(art.shapeRegion, rect[0] - sx * scale, rect[1] - sy * scale, rw * scale, rh * scale); } const data = ctx.getImageData(0, 0, n, n).data; let a = new Uint8Array(n * n); for (let i = 0; i < a.length; i++)a[i] = data[i * 4 + 3] > 50 ? 1 : 0; fillHoles(a, n); if (!art.shapeRegion) a = expand(a, n, o.border); const mask = canvas(), m = mask.getContext('2d'), md = m.createImageData(n, n); for (let i = 0; i < a.length; i++) { md.data[i * 4] = md.data[i * 4 + 1] = md.data[i * 4 + 2] = 255; md.data[i * 4 + 3] = a[i] * 255 } m.putImageData(md, 0, 0); if (o.smooth > 0 && !art.shapeRegion) { const temp = canvas(), tx = temp.getContext('2d'); tx.filter = `blur(${o.smooth / 3}px)`; tx.drawImage(mask, 0, 0); const td = tx.getImageData(0, 0, n, n); for (let i = 3; i < td.data.length; i += 4)td.data[i] = Math.round(Math.max(0, Math.min(1, (td.data[i] - 75) / 105)) * 255); m.putImageData(td, 0, 0) }
-    const hx = 250 + o.holeX, hy = 240 + o.holeY; // Connect the hanging component to the nearest real silhouette pixel.
-    let nearest = null, best = Infinity; const raw = m.getImageData(0, 0, n, n).data; for (let y = 0; y < n; y++)for (let x = 0; x < n; x++)if (raw[(y * n + x) * 4 + 3] > 128) { const dist = (x - hx) ** 2 + (y - hy) ** 2; if (dist < best) { best = dist; nearest = [x, y] } }
-    // 挂孔随板体缩放（孔是板上的洞，位置必须与板轮廓耦合）；大小按规格比例
-    // 的平方缩小（1/k²）：产品层随规格放大 k 倍后，孔净大小 = 14/k（按 scale
-    // 值真实缩小），与挂件（235/k）保持同一比例。
-    if (o.hook && nearest) { const q = (specRatio(o.specSize)) ** 2, outer = 14 / q, inner = 4.5 / q; m.strokeStyle = 'white'; m.lineWidth = 22 / q; m.lineCap = 'round'; m.beginPath(); m.moveTo(hx, hy); m.lineTo(...nearest); m.stroke(); m.fillStyle = 'white'; if (o.holeShape === 'square') { m.lineWidth = 10 / q; m.lineJoin = 'round'; m.beginPath(); m.moveTo(hx - outer, hy + outer); m.lineTo(hx - outer, hy); m.arc(hx, hy, outer, Math.PI, 0); m.lineTo(hx + outer, hy + outer); m.stroke(); } else { m.beginPath(); m.arc(hx, hy, outer, 0, Math.PI * 2); m.fill(); } m.globalCompositeOperation = 'destination-out'; m.beginPath(); m.arc(hx, hy, inner, 0, Math.PI * 2); m.fill(); m.globalCompositeOperation = 'source-over' } return { mask, rect, hx, hy };
+    // 支持单孔与多孔（多组件）：o.holes 为挂孔数组；缺省时由 o.hook 决定单孔。
+    const raw = m.getImageData(0, 0, n, n).data;
+    const holes = (o.holes && o.holes.length)
+      ? o.holes
+      : (o.hook ? [{ holeX: o.holeX, holeY: o.holeY, holeShape: o.holeShape }] : []);
+    const holePoints = [];
+    for (const hole of holes) {
+      const hx = 250 + hole.holeX, hy = 240 + hole.holeY; // Connect the hanging component to the nearest real silhouette pixel.
+      let nearest = null, best = Infinity; for (let y = 0; y < n; y++)for (let x = 0; x < n; x++)if (raw[(y * n + x) * 4 + 3] > 128) { const dist = (x - hx) ** 2 + (y - hy) ** 2; if (dist < best) { best = dist; nearest = [x, y] } }
+      // 挂孔随板体缩放（孔是板上的洞，位置必须与板轮廓耦合）；大小按规格比例
+      // 的平方缩小（1/k²）：产品层随规格放大 k 倍后，孔净大小 = 14/k（按 scale
+      // 值真实缩小），与挂件（235/k）保持同一比例。
+      if (o.hook && nearest) { const q = (specRatio(o.specSize)) ** 2, outer = 14 / q, inner = 4.5 / q; m.strokeStyle = 'white'; m.lineWidth = 22 / q; m.lineCap = 'round'; m.beginPath(); m.moveTo(hx, hy); m.lineTo(...nearest); m.stroke(); m.fillStyle = 'white'; if (hole.holeShape === 'square') { m.lineWidth = 10 / q; m.lineJoin = 'round'; m.beginPath(); m.moveTo(hx - outer, hy + outer); m.lineTo(hx - outer, hy); m.arc(hx, hy, outer, Math.PI, 0); m.lineTo(hx + outer, hy + outer); m.stroke(); } else { m.beginPath(); m.arc(hx, hy, outer, 0, Math.PI * 2); m.fill(); } m.globalCompositeOperation = 'destination-out'; m.beginPath(); m.arc(hx, hy, inner, 0, Math.PI * 2); m.fill(); m.globalCompositeOperation = 'source-over'; holePoints.push({ hx, hy }) }
+    }
+    return { mask, rect, hx: holePoints.length ? holePoints[0].hx : 250, hy: holePoints.length ? holePoints[0].hy : 240, holes: holePoints };
 }
 // Maps a point expressed in the raw artwork pixel space (e.g. the component
 // position picked on the design canvas) onto the hole offsets consumed by
@@ -100,7 +109,7 @@ export function renderProduct(assets, art, o, shape) {
     // 挂件贴孔（孔随板走，位置与板体耦合）；大小按 1/k² 绘制：产品层随规格
     // 放大 k 倍后净大小 = 235/k，即挂扣在最终效果图中按 scale 值真实缩小
     // （5cm→235、10cm→117.5、20cm→58.75 @500空间）。
-    if (o.hook) { const q = (specRatio(o.specSize)) ** 2, hh = 235 / q, hw = hh * assets.hook.width / assets.hook.height; p.drawImage(assets.hook, hx - hw / 2, hy - hh * .885, hw, hh) }
+    if (o.hook) { const q = (specRatio(o.specSize)) ** 2, hh = 235 / q, hw = hh * assets.hook.width / assets.hook.height; const hookPts = (shape.holes && shape.holes.length) ? shape.holes : [{ hx, hy }]; for (const hp of hookPts) p.drawImage(assets.hook, hp.hx - hw / 2, hp.hy - hh * .885, hw, hh) }
     return product;
 }
 // Merges a plate's own placement (offset/rotation/scale/z) with the shared

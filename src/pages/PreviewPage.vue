@@ -50,6 +50,7 @@
         :component-size="patternComponentSize"
         :sticker-pattern-assets="stickerPatternAssets"
         :sticker-enabled="stickerEnabledSetting"
+        :multi-sticker="stickerMultiSetting"
         :spec-size="patternSpecSize"
         :interface-tab-enabled="patternInterfaceTabEnabled"
         :interface-guide-width="patternInterfaceGuideWidth"
@@ -275,6 +276,9 @@ export default {
     stickerEnabledSetting() {
       return sharedState.stickerEnabled;
     },
+    stickerMultiSetting() {
+      return sharedState.multiSticker;
+    },
     patternSpecSize() {
       const value = Number(this.editorOptions && this.editorOptions.specSize);
       return Number.isFinite(value) ? value : SPEC_DEFAULT_SIZE;
@@ -457,6 +461,10 @@ export default {
         Number.isFinite(size) && size > 0 ? Math.round(size) : null;
       sharedState.stickerEnabled =
         typeof sticker.enabled === "boolean" ? sticker.enabled : null;
+      // 多组件开关（settings 页配置）：导入方案时一并复原，
+      // 否则 PatternDesigner 收到 multiSticker=false 只建单个组件。
+      sharedState.multiSticker =
+        typeof sticker.multi === "boolean" ? sticker.multi : false;
     },
     // 把已设计完成的板块（按标识匹配）铺到指定方案的编辑器场景。
     applyPlanBoards(plan) {
@@ -478,6 +486,8 @@ export default {
           id: p.id,
           src: url,
           hole: state.hole || null,
+          // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）。
+          holes: state.holes || null,
           shapeRegion: state.shapeRegion || null,
           transform: boardTransform(
             p,
@@ -498,6 +508,8 @@ export default {
         this.$set(this.designStates, b.tag, {
           blob: b.blob,
           hole: b.hole || null,
+          // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）。
+          holes: b.holes || null,
           shapeRegion: b.shapeRegion || null,
           filename: b.filename || b.tag + ".png",
         });
@@ -536,6 +548,8 @@ export default {
                 JSON.stringify(sharedState.stickerPatterns || []),
               ),
               componentSize: sharedState.componentSize,
+              enabled: sharedState.stickerEnabled,
+              multi: sharedState.multiSticker,
             },
           },
           imageUrl: "",

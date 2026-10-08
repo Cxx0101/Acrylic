@@ -39,6 +39,8 @@ const DEFAULTS = {
   holeX: 0,
   holeY: 0,
   holeShape: "ring",
+  // 多组件挂孔数组；单孔/无组件时为空，makeShape 回退到下方单孔字段。
+  holes: [],
   hook: true,
   background: "scene",
   productX: 0,
@@ -219,6 +221,8 @@ export default {
           boards.push({
             id: cfg.id || "b" + boards.length,
             hole: cfg.hole || null,
+            // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）。
+            holes: cfg.holes || null,
             shapeRegionUrl: cfg.shapeRegionUrl || null,
             transform: cfg.transform || null,
             o: cfg.o || null,
@@ -285,6 +289,8 @@ export default {
             blockO.holeY,
             blockO.holeShape,
             blockO.hook,
+            // 多组件时挂孔数组指纹；单孔时为空串，不影响既有缓存。
+            (blockO.holes || []).length + "|" + (blockO.holes || []).map((h) => h.holeX + "," + h.holeY + "," + h.holeShape).join(";"),
             // 挂孔在 makeShape 内按规格比例缩放，规格变化必须重算 shape。
             blockO.specSize,
           ].join("|");
@@ -312,7 +318,28 @@ export default {
       if (!board) return shared;
       // Per-plate overrides (material/contour/hook) beat the shared options.
       const merged = board.o ? Object.assign({}, shared, board.o) : shared;
-      if (!board.hole || !board.art || !board.art.box) return merged;
+      if (!board.art || !board.art.box) return merged;
+      // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）；优先于单孔。
+      if (board.holes && board.holes.length) {
+        const holes = board.holes.map((h) => {
+          const off = holeOffsetsFromPoint(board.art.box, h);
+          return {
+            holeX: off.holeX,
+            holeY: off.holeY,
+            holeShape: h.shape === "square" ? "square" : "ring",
+          };
+        });
+        // 同步首孔到单孔字段（手动拖拽 / 设置导出链路兼容）。
+        return Object.assign({}, merged, {
+          holes,
+          holeX: holes[0].holeX,
+          holeY: holes[0].holeY,
+          holeShape: holes[0].holeShape,
+          // 多个组件即多个挂孔，必须开启挂件绘制。
+          hook: holes.length > 1 ? true : merged.hook,
+        });
+      }
+      if (!board.hole) return merged;
       const offsets = holeOffsetsFromPoint(board.art.box, board.hole);
       return Object.assign({}, merged, {
         holeX: offsets.holeX,
@@ -390,6 +417,8 @@ export default {
           id: item.id || "b" + i,
           src: item.src,
           hole: item.hole || null,
+          // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）。
+          holes: Array.isArray(item.holes) ? item.holes : null,
           shapeRegionUrl,
           transform: item.transform || null,
           o: item.o || null,

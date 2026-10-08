@@ -257,6 +257,9 @@ export default {
     // 是否启用组件（settings/方案 JSON 控制）。null = 未设置，不干预本地
     // 手动勾选；true/false 时自动同步启停（含贴片创建/移除）。
     stickerEnabled: { type: Boolean, default: null },
+    // 是否启用多个组件：true 时预览页同一画布插入两次组件（图片上/下），
+    // 默认位置在图片上方和下方，合并时自动桥接到刀线轮廓。
+    multiSticker: { type: Boolean, default: false },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidthSetting: { type: Number, default: 300 },
     interfaceGuideHeightSetting: { type: Number, default: 52 },
@@ -282,6 +285,15 @@ export default {
       // is dragged on either the inside or the outside of the artwork.
       cutLineBoundaryMask: null,
       edgeSticker: null,
+      // changeStickerPattern 异步重建中的并发护栏。
+      stickerRebuilding: false,
+      // 多组件模式（multiSticker）下，除首个（图片上方）外的其余组件引用。
+      // 首个恒为 this.edgeSticker，其余存放于此数组。
+      edgeStickers: [],
+      // 多组件合并后记录每个组件的挂孔位置（供效果图编辑器绘制挂孔）。
+      designHoles: [],
+      // 多组件多次合并时累积的画布内偏移，用于对齐后续组件的 source 坐标。
+      accumStickerOffset: { left: 0, top: 0 },
       interfaceTab: null,
       interfaceGuide: null,
       // 正面尚未“确定组件”时，切到反面预览前保留完整编辑态，
@@ -389,6 +401,14 @@ export default {
       this.enableEdgeSticker = next;
       if (this.fabricCanvas && !this.processing) this.toggleEdgeSticker();
     },
+    multiSticker() {
+      // 多组件开关变化（方案导入/设置页切换）时，已有组件按新模式重建：
+      // 单→多补下方组件，多→单移除多余组件；无组件时不动作
+      // （插入图片时按当前模式创建）。
+      if (!this.fabricCanvas || this.processing) return;
+      if (!this.enableEdgeSticker || !this.edgeSticker) return;
+      this.changeStickerPattern();
+    },
     specSize(value) {
       const next = Number(value);
       if (!Number.isFinite(next) || next <= 0) return;
@@ -469,6 +489,7 @@ export default {
       this.replacementFrame = asset.replacementFrame || null;
       this.preMergeState = asset.preMergeState || null;
       this.designHole = asset.designHole || null;
+      this.designHoles = (asset.designHoles || []).slice();
       this.finish = Boolean(asset.finish);
     },
 
@@ -581,6 +602,8 @@ export default {
           outerPathBlob: this.outerPathBlob,
           replacementFrame: this.replacementFrame,
           preMergeState: this.preMergeState,
+          designHole: this.designHole,
+          designHoles: this.designHoles.slice(),
           finish: this.finish,
         },
         background: {
@@ -592,6 +615,8 @@ export default {
         },
         snapContour: this.snapContour.map((point) => ({ ...point })),
         edgeSticker: getObjectState(this.edgeSticker),
+        // 多组件：其余组件（下方）同样纳入快照，反面合并才不会退化成单组件。
+        edgeStickers: (this.edgeStickers || []).map(getObjectState),
         interfaceTab: getObjectState(this.interfaceTab),
         interfaceGuide: getObjectState(this.interfaceGuide),
       };
@@ -609,6 +634,13 @@ export default {
       background.set(snapshot.background);
       background.setCoords();
       this.snapContour = snapshot.snapContour.map((point) => ({ ...point }));
+      // 多组件：insertImage 已重建主组件 + 下方组件，按快照顺序逐个还原。
+      (snapshot.edgeStickers || []).forEach((state, index) => {
+        const object = this.edgeStickers[index];
+        if (!object || !state) return;
+        object.set(state);
+        object.setCoords();
+      });
       [
         [this.edgeSticker, snapshot.edgeSticker],
         [this.interfaceTab, snapshot.interfaceTab],
@@ -618,7 +650,9 @@ export default {
         object.set(state);
         object.setCoords();
       });
-      if (this.edgeSticker) this.snapObjectToContour(this.edgeSticker);
+      this.allStickerObjects().forEach((sticker) =>
+        this.snapObjectToContour(sticker),
+      );
       this.setAccessoryEditingState(true);
       this.frontEditorSnapshot = null;
       this.updateDimensionAnnotation();
@@ -1174,6 +1208,32 @@ export default {
       return nearest;
     },
 
+    // 在刀线轮廓上取最靠上 / 最靠下的点（多组件默认贴附点）。
+    // 只按 Y 极值筛选，避免贴到侧面；再在同高候选里取最接近水平中心者，
+    // 使组件落在图案正上/正下方而不是边缘。
+    findExtremeContourPoint(edge) {
+      if (!this.snapContour.length) return null;
+      const pick = (a, b) => (edge === "top" ? a.y < b.y : a.y > b.y);
+      let extreme = this.snapContour[0];
+      for (let i = 1; i < this.snapContour.length; i++) {
+        if (pick(this.snapContour[i], extreme)) extreme = this.snapContour[i];
+      }
+      const bounds = this.getContourBounds(this.snapContour, null);
+      const centerX = bounds ? (bounds.left + bounds.right) / 2 : extreme.x;
+      const tolerance = 4;
+      const sameLevel = this.snapContour.filter(
+        (p) => Math.abs(p.y - extreme.y) <= tolerance,
+      );
+      if (sameLevel.length > 1) {
+        let best = sameLevel[0];
+        sameLevel.forEach((p) => {
+          if (Math.abs(p.x - centerX) < Math.abs(best.x - centerX)) best = p;
+        });
+        return best;
+      }
+      return extreme;
+    },
+
     async refreshCutLineBoundaryMask() {
       const sourceBlob = this.pathBlob;
       if (!sourceBlob) {
@@ -1542,37 +1602,51 @@ export default {
       return asset && asset.src ? asset.src : "";
     },
 
+    // 当前画布上全部组件贴片（主组件 + 多组件模式下方的组件）。
+    // 尺寸/图案刷新必须覆盖全部贴片，否则多组件会出现大小不一致。
+    allStickerObjects() {
+      return [this.edgeSticker].concat(this.edgeStickers || []).filter(Boolean);
+    },
+
     refreshStickerSvgSource() {
-      if (!this.edgeSticker) return Promise.resolve();
-      return new Promise((resolve) => {
-        this.edgeSticker.outerMaskCache = null;
-        this.edgeSticker.intersectingStickerCenter = null;
-        this.edgeSticker.setSrc(this.getStickerImageUrl(), resolve, {
-          crossOrigin: "anonymous",
-        });
-      });
+      const stickers = this.allStickerObjects();
+      if (!stickers.length) return Promise.resolve();
+      const url = this.getStickerImageUrl();
+      return Promise.all(
+        stickers.map(
+          (sticker) =>
+            new Promise((resolve) => {
+              sticker.outerMaskCache = null;
+              sticker.intersectingStickerCenter = null;
+              sticker.setSrc(url, resolve, { crossOrigin: "anonymous" });
+            }),
+        ),
+      );
     },
 
     async applyStickerSize({ refreshSvg = true } = {}) {
-      if (!this.edgeSticker) return;
+      const stickers = this.allStickerObjects();
+      if (!stickers.length) return;
       // stickerSize is specified in Fabric preview pixels. The background is
       // fitted independently for every source image, but this control must
       // always look exactly like the value the user entered.
       const size = Math.max(1, Math.round(Number(this.stickerSize) || 50));
       this.stickerSize = size;
-      console.log("🚀 ~  this.stickerSize:",  this.stickerSize)
       if (refreshSvg) await this.refreshStickerSvgSource();
-      const sourceWidth = this.edgeSticker.width || 64;
-      const scale = size / sourceWidth;
-      this.edgeSticker.set({
-        scaleX: scale,
-        scaleY: scale,
-        contourSnapRadius:
-          size * (this.edgeSticker.contourSnapRadiusRatio || 0.5),
+      // 多组件必须与单组件同尺寸：逐个按设置值换算 scale（含下方组件）。
+      stickers.forEach((sticker) => {
+        const sourceWidth = sticker.width || 64;
+        const scale = size / sourceWidth;
+        sticker.set({
+          scaleX: scale,
+          scaleY: scale,
+          contourSnapRadius:
+            size * (sticker.contourSnapRadiusRatio || 0.5),
+        });
+        sticker.intersectingStickerCenter = null;
+        this.snapObjectToContour(sticker);
+        sticker.setCoords();
       });
-      this.edgeSticker.intersectingStickerCenter = null;
-      this.snapObjectToContour(this.edgeSticker);
-      this.edgeSticker.setCoords();
       this.fitArtworkToDimensionLimit();
     },
 
@@ -1613,15 +1687,44 @@ export default {
     },
 
     async changeStickerPattern() {
-      if (!this.enableEdgeSticker || !this.edgeSticker) return;
-      await this.addDefaultSticker();
+      if (!this.enableEdgeSticker) return;
+      // 并发重入护栏：方案导入会同时触发 patterns 变化与 multiSticker 变化
+      // 两个 watcher，均会调本方法；异步重建期间不加锁会重复建贴片。
+      if (this.stickerRebuilding) return;
+      this.stickerRebuilding = true;
+      try {
+        if (this.multiSticker) {
+          if (this.edgeSticker) {
+            this.fabricCanvas.remove(this.edgeSticker);
+            this.edgeSticker = null;
+          }
+          this.edgeStickers.forEach((s) => this.fabricCanvas.remove(s));
+          this.edgeStickers = [];
+          await this.addAllStickers();
+        } else {
+          if (!this.edgeSticker) return;
+          // 多→单切换：清掉多组件模式遗留的其余贴片再重建单组件。
+          this.edgeStickers.forEach((s) => this.fabricCanvas.remove(s));
+          this.edgeStickers = [];
+          await this.addDefaultSticker();
+        }
+      } finally {
+        this.stickerRebuilding = false;
+      }
     },
 
-    async addDefaultSticker() {
+    // 按当前模式创建组件：单组件 1 个；多组件 2 个，分别贴在图案刀线轮廓的
+    // 最上 / 最下点（与单组件一致，必须与图片相交、不得脱离图外）。
+    async addAllStickers() {
+      await this.addDefaultSticker({ position: "top" });
+      if (this.multiSticker) {
+        await this.addDefaultSticker({ position: "bottom" });
+      }
+    },
+    async addDefaultSticker({ position = "top" } = {}) {
       if (!this.snapContour.length) return;
       // 组件图案完全来自方案导入：无图案时不创建贴片。
       const stickerUrl = this.getStickerImageUrl();
-      console.log("🚀 ~ stickerUrl:", stickerUrl);
       if (!stickerUrl) {
         this.error = "当前方案没有组件图案，请导入包含组件设置的方案";
         clearTimeout(this.noticeTimer);
@@ -1630,21 +1733,42 @@ export default {
         }, 3000);
         return;
       }
-      const currentPosition = this.edgeSticker
+      // 仅单组件重新选图案时沿用当前位置；多组件第二个按轮廓最下点放置。
+      const keepCurrent =
+        position === "top" &&
+        this.multiSticker === false &&
+        this.edgeSticker &&
+        this.edgeStickers.length === 0;
+      const currentPosition = keepCurrent
         ? {
             left: this.edgeSticker.left,
             top: this.edgeSticker.top,
             angle: this.edgeSticker.angle || 0,
           }
         : null;
-      if (this.edgeSticker) {
+      if (keepCurrent) {
         this.fabricCanvas.remove(this.edgeSticker);
       }
 
       const sticker = await this.loadFabricImage(stickerUrl);
+      let left, top;
+      if (currentPosition) {
+        left = currentPosition.left;
+        top = currentPosition.top;
+      } else if (this.multiSticker) {
+        // 多组件：贴附到刀线轮廓的最上 / 最下点，与单组件同一条吸附链路，
+        // 保证组件始终与图片相交、不会脱离图外。
+        const anchor = this.findExtremeContourPoint(position);
+        if (!anchor) return;
+        left = anchor.x;
+        top = anchor.y;
+      } else {
+        left = this.snapContour[0].x;
+        top = this.snapContour[0].y;
+      }
       sticker.set({
-        left: currentPosition ? currentPosition.left : this.snapContour[0].x,
-        top: currentPosition ? currentPosition.top : this.snapContour[0].y,
+        left,
+        top,
         originX: "center",
         originY: "center",
         snapToOuterContour: true,
@@ -1666,7 +1790,11 @@ export default {
       // the pattern identifier directly on the live image as well.
       sticker.stickerPattern = this.stickerPattern;
       this.fabricCanvas.add(sticker);
-      this.edgeSticker = sticker;
+      if (position === "bottom") {
+        this.edgeStickers.push(sticker);
+      } else {
+        this.edgeSticker = sticker;
+      }
       await this.applyStickerSize({ refreshSvg: false });
       this.snapObjectToContour(sticker);
       this.fabricCanvas.setActiveObject(sticker);
@@ -1683,10 +1811,14 @@ export default {
         this.interfaceTab = null;
         this.interfaceGuide = null;
         if (!this.fabricCanvas.backgroundImage) return;
-        await this.addDefaultSticker();
-      } else if (this.edgeSticker) {
-        this.fabricCanvas.remove(this.edgeSticker);
-        this.edgeSticker = null;
+        await this.addAllStickers();
+      } else if (this.edgeSticker || this.edgeStickers.length) {
+        if (this.edgeSticker) {
+          this.fabricCanvas.remove(this.edgeSticker);
+          this.edgeSticker = null;
+        }
+        this.edgeStickers.forEach((s) => this.fabricCanvas.remove(s));
+        this.edgeStickers = [];
         this.applyPhysicalSize();
       }
     },
@@ -2006,19 +2138,19 @@ export default {
       return this.canvasToPngBlob(canvas);
     },
 
-    getStickerSourcePosition(offsetX = 0, offsetY = 0) {
+    getStickerSourcePosition(sticker = this.edgeSticker, offsetX = 0, offsetY = 0) {
       const background = this.fabricCanvas && this.fabricCanvas.backgroundImage;
-      if (!background || !this.edgeSticker) return null;
+      if (!background || !sticker) return null;
       return {
         x:
-          (this.edgeSticker.left - background.left) / (background.scaleX || 1) +
+          (sticker.left - background.left) / (background.scaleX || 1) +
           offsetX,
         y:
-          (this.edgeSticker.top - background.top) / (background.scaleY || 1) +
+          (sticker.top - background.top) / (background.scaleY || 1) +
           offsetY,
-        width: this.edgeSticker.getScaledWidth() / (background.scaleX || 1),
-        height: this.edgeSticker.getScaledHeight() / (background.scaleY || 1),
-        angle: this.edgeSticker.angle || 0,
+        width: sticker.getScaledWidth() / (background.scaleX || 1),
+        height: sticker.getScaledHeight() / (background.scaleY || 1),
+        angle: sticker.angle || 0,
       };
     },
 
@@ -2038,6 +2170,14 @@ export default {
         }
       }
       return this.designHole || null;
+    },
+    // 多组件：返回合并后全部挂孔（预览页同画布上/下方各一）。数组由
+    // mergeStickerIntoContour 在确认组件时填充；单组件时为 [单孔]、无组件为 []。
+    getDesignHoles() {
+      if (this.designHoles && this.designHoles.length) {
+        return this.designHoles.slice();
+      }
+      return [];
     },
 
     // Product silhouette for the effect editor: the enclosed interior of the
@@ -3726,9 +3866,10 @@ export default {
       pathBlob = this.pathBlob,
       offsetX = 0,
       offsetY = 0,
+      sticker = this.edgeSticker,
     } = {}) {
       const background = this.fabricCanvas.backgroundImage;
-      if (!background || !this.edgeSticker || !pathBlob) {
+      if (!background || !sticker || !pathBlob) {
         throw new Error("组件刀线尚未准备好");
       }
       if (
@@ -3739,17 +3880,19 @@ export default {
       }
       // Reapply the attachment constraint immediately before export in case a
       // drag or rotation completed while the die-line mask was refreshing.
-      this.snapObjectToContour(this.edgeSticker);
+      this.snapObjectToContour(sticker);
+      // 单/多组件一致：组件必须与刀线保留重合或相交区域（吸附已保证，
+      // 这里做导出前的兜底校验，防止拖拽后脱离图片）。
       if (
         !this.isStickerIntersectingCutLine(
-          this.edgeSticker,
-          this.edgeSticker.getCenterPoint(),
+          sticker,
+          sticker.getCenterPoint(),
         )
       ) {
         throw new Error("组件必须与刀线保留重合或相交区域");
       }
 
-      const position = this.getStickerSourcePosition(offsetX, offsetY);
+      const position = this.getStickerSourcePosition(sticker, offsetX, offsetY);
       if (!position) throw new Error("组件位置尚未准备好");
 
       if (await this.isStickerOuterLoopInsideCutLine(position, { pathBlob })) {
@@ -4055,6 +4198,19 @@ export default {
         outerPathBlob: this.outerPathBlob,
         replacementFrame: this.replacementFrame,
         designHole: this.designHole,
+        designHoles: this.designHoles.slice(),
+        // 多组件：记录全部组件（主组件 + 下方组件）的位置/角度/尺寸，
+        // 「重置组件」需逐个还原，否则会退化成单组件。
+        stickers: this.allStickerObjects().map((sticker) => ({
+          x:
+            (sticker.left - this.fabricCanvas.backgroundImage.left) /
+            (this.fabricCanvas.backgroundImage.scaleX || 1),
+          y:
+            (sticker.top - this.fabricCanvas.backgroundImage.top) /
+            (this.fabricCanvas.backgroundImage.scaleY || 1),
+          size: sticker.getScaledWidth(),
+          angle: sticker.angle || 0,
+        })),
         sticker: this.edgeSticker
           ? {
               x:
@@ -4078,6 +4234,8 @@ export default {
             }
           : null,
       };
+      this.accumStickerOffset = { left: 0, top: 0 };
+      this.designHoles = [];
       this.processing = true;
       this.error = "";
       this.progress = 0;
@@ -4113,11 +4271,15 @@ export default {
           this.artworkBlob = paddedArtworkBlob;
           // The sticker is removed after the merge; remember where the hole
           // belongs in the padded layer so the effect editor can place it.
-          this.designHole = {
+          this.designHoles.push({
             x: stickerPosition.x + componentPadding.left,
             y: stickerPosition.y + componentPadding.top,
             shape: this.edgeSticker.stickerPattern || this.stickerPattern,
-          };
+          });
+          this.designHole = this.designHoles[this.designHoles.length - 1];
+          // 累积首次合并的画布内偏移，供后续组件对齐到 pad 后的图层。
+          this.accumStickerOffset.left += componentPadding.left;
+          this.accumStickerOffset.top += componentPadding.top;
           if (this.replacementFrame) {
             this.replacementFrame = {
               ...this.replacementFrame,
@@ -4126,6 +4288,54 @@ export default {
             };
           }
           this.outerPathBlob = this.pathBlob;
+          // 多组件：将图片上/下方的其余组件逐个桥接合并（沿用同一合并原语）。
+          for (const extra of this.edgeStickers) {
+            this.snapObjectToContour(extra);
+            const extraPos = this.getStickerSourcePosition(
+              extra,
+              this.accumStickerOffset.left,
+              this.accumStickerOffset.top,
+            );
+            const { width: epw, height: eph } = await this.getBlobDimensions(
+              this.pathBlob,
+            );
+            const extraPad = this.getStickerFramePadding(extraPos, epw, eph);
+            const [eContent, ePath, eArt] = await Promise.all([
+              this.padLayerBlob(this.contentBlob, extraPad),
+              this.padLayerBlob(this.pathBlob, extraPad),
+              this.artworkBlob
+                ? this.padLayerBlob(this.artworkBlob, extraPad)
+                : Promise.resolve(null),
+            ]);
+            this.pathBlob = await this.mergeStickerOutlineIntoCutLine({
+              pathBlob: ePath,
+              // mergeStickerOutlineIntoCutLine 内部会再调
+              // getStickerSourcePosition(sticker, offsetX, offsetY) 重算坐标，
+              // 因此这里必须传「相对最初未 pad 图层」的**累积总偏移**；
+              // 只传 extraPad 会丢掉前面组件已累积的位移，下方组件会被画进图内。
+              offsetX: this.accumStickerOffset.left + extraPad.left,
+              offsetY: this.accumStickerOffset.top + extraPad.top,
+              sticker: extra,
+            });
+            this.contentBlob = eContent;
+            this.artworkBlob = eArt;
+            this.designHoles.push({
+              x: extraPos.x + extraPad.left,
+              y: extraPos.y + extraPad.top,
+              shape: extra.stickerPattern || this.stickerPattern,
+            });
+            if (this.replacementFrame) {
+              this.replacementFrame = {
+                ...this.replacementFrame,
+                offsetX: this.replacementFrame.offsetX + extraPad.left,
+                offsetY: this.replacementFrame.offsetY + extraPad.top,
+              };
+            }
+            this.outerPathBlob = this.pathBlob;
+            this.accumStickerOffset.left += extraPad.left;
+            this.accumStickerOffset.top += extraPad.top;
+          }
+          this.designHole = this.designHoles[this.designHoles.length - 1] || null;
           this.resultBlob = await this.composeLayeredResult();
           await this.insertImage(this.resultBlob, {
             addSticker: false,
@@ -4133,15 +4343,19 @@ export default {
             // Padding moves the original pixels within the source image.
             // Compensate its Fabric origin so the design stays visually fixed
             // while the newly exposed component contour remains in frame.
+            // 多组件：必须用全部组件累积的 pad（accumStickerOffset），否则下方
+            // 组件的轮廓补偿会少算自己那一段，导出位置整体偏移。
             previewLayout: previousState.previewLayout
               ? {
                   ...previousState.previewLayout,
                   left:
                     previousState.previewLayout.left -
-                    componentPadding.left * previousState.previewLayout.scaleX,
+                    this.accumStickerOffset.left *
+                      previousState.previewLayout.scaleX,
                   top:
                     previousState.previewLayout.top -
-                    componentPadding.top * previousState.previewLayout.scaleY,
+                    this.accumStickerOffset.top *
+                      previousState.previewLayout.scaleY,
                 }
               : null,
           });
@@ -4289,8 +4503,36 @@ export default {
         this.outerPathBlob = previous.outerPathBlob || previous.pathBlob;
         this.replacementFrame = previous.replacementFrame || null;
         this.designHole = previous.designHole || null;
+        this.designHoles = (previous.designHoles || []).slice();
         await this.insertImage(previous.resultBlob);
-        if (this.edgeSticker) {
+        // 多组件：insertImage 已按当前模式重建全部组件（主 + 下方），
+        // 这里按快照逐个还原位置/角度/尺寸；单组件走旧的单孔恢复路径。
+        const stickerStates =
+          previous.stickers && previous.stickers.length
+            ? previous.stickers
+            : previous.sticker
+              ? [previous.sticker]
+              : [];
+        const restored = this.allStickerObjects();
+        if (stickerStates.length && restored.length) {
+          const background = this.fabricCanvas.backgroundImage;
+          // 以首个组件的尺寸为准恢复设置值，保证多个组件仍然同大小。
+          this.stickerSize = Math.max(1, Math.round(stickerStates[0].size));
+          await this.applyStickerSize();
+          restored.forEach((sticker, index) => {
+            const state = stickerStates[index];
+            if (!state) return;
+            sticker.set({
+              left: background.left + state.x * (background.scaleX || 1),
+              top: background.top + state.y * (background.scaleY || 1),
+              angle: state.angle || 0,
+            });
+            this.snapObjectToContour(sticker);
+            sticker.setCoords();
+          });
+          this.fabricCanvas.setActiveObject(restored[0]);
+          this.fabricCanvas.requestRenderAll();
+        } else if (this.edgeSticker && previous.sticker) {
           const background = this.fabricCanvas.backgroundImage;
           this.stickerSize = Math.max(1, Math.round(previous.sticker.size));
           await this.applyStickerSize();
@@ -4413,7 +4655,7 @@ export default {
       );
       if (addSticker) {
         if (this.enableEdgeSticker) {
-          await this.addDefaultSticker();
+          await this.addAllStickers();
         } else if (this.enableInterfaceTab) {
           this.addDefaultInterfaceTab();
         }
@@ -4422,6 +4664,8 @@ export default {
           this.fabricCanvas.remove(this.edgeSticker);
           this.edgeSticker = null;
         }
+        this.edgeStickers.forEach((s) => this.fabricCanvas.remove(s));
+        this.edgeStickers = [];
         if (this.interfaceTab) {
           this.fabricCanvas.remove(this.interfaceTab);
           this.interfaceTab = null;

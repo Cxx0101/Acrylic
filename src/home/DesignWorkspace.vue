@@ -48,6 +48,7 @@
         :component-size="componentSize"
         :sticker-pattern-assets="stickerPatternAssets"
         :sticker-enabled="stickerEnabled"
+        :multi-sticker="multiSticker"
         :spec-size="
           Number(specSize) || Number(board.specSize) || SPEC_DEFAULT_SIZE
         "
@@ -86,6 +87,8 @@ export default {
     stickerPatternAssets: { type: Array, default: () => [] },
     // 是否启用组件（settings/方案 JSON 控制）；null = 未设置不干预。
     stickerEnabled: { type: Boolean, default: null },
+    // 是否启用多个组件（settings/方案 JSON 控制）。
+    multiSticker: { type: Boolean, default: false },
     specSize: { type: Number, default: SPEC_DEFAULT_SIZE },
     interfaceTabEnabled: { type: Boolean, default: false },
     interfaceGuideWidth: { type: Number, default: 300 },
@@ -181,6 +184,8 @@ export default {
           name: board.name,
           blob: designer.artworkBlob,
           hole: designer.getDesignHole ? designer.getDesignHole() : null,
+          // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）。
+          holes: designer.getDesignHoles ? designer.getDesignHoles() : null,
           shapeRegion,
           x: Number(board.x) || 250,
           y: Number(board.y) || 255,

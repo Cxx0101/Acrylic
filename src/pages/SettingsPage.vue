@@ -89,12 +89,20 @@
               <input
                 type="checkbox"
                 :checked="stickerEnabled === true"
-                @change="
-                  sharedState.stickerEnabled = $event.target.checked;
-                "
+                @change="stickerEnabled = $event.target.checked"
               /> </label
             ><span class="sticker-setting-hint"
               >开启后首页设计器自动启用组件（随方案 JSON 复原）</span
+            >
+            <label class="toggle-label"
+              >启用多个组件
+              <input
+                type="checkbox"
+                :checked="stickerMulti === true"
+                @change="stickerMulti = $event.target.checked"
+              /> </label
+            ><span class="sticker-setting-hint"
+              >开启后预览页同一画布插入两次组件，默认在图片上/下方</span
             >
           </div>
         </section>
@@ -146,8 +154,24 @@ export default {
     stickerComponentSize() {
       return sharedState.componentSize;
     },
-    stickerEnabled() {
-      return sharedState.stickerEnabled;
+    // 可写 computed：模板不能直接引用模块级 sharedState（未挂到实例上），
+    // 早期版本 `sharedState.x = $event.target.checked` 会静默失败——DOM 勾上了
+    // 但 sharedState 没变，导出 JSON 仍是旧值。统一走 setter 写回。
+    stickerEnabled: {
+      get() {
+        return sharedState.stickerEnabled;
+      },
+      set(value) {
+        sharedState.stickerEnabled = value;
+      },
+    },
+    stickerMulti: {
+      get() {
+        return sharedState.multiSticker;
+      },
+      set(value) {
+        sharedState.multiSticker = value;
+      },
     },
   },
   watch: {
@@ -191,6 +215,7 @@ export default {
         patterns: JSON.parse(JSON.stringify(sharedState.stickerPatterns)),
         componentSize: sharedState.componentSize,
         enabled: sharedState.stickerEnabled,
+        multi: sharedState.multiSticker,
       };
       return plan;
     },
@@ -239,7 +264,9 @@ export default {
     },
     // 每板块参数编辑回写 planBoards（随方案 JSON 导出）。
     onBoardOChange({ id, o }) {
+      console.log("🚀 ~ id:", id)
       const board = this.layoutBoards.find((b) => b.id === id);
+      console.log("🚀 ~ board:", board)
       if (board) this.$set(board, "o", o);
     },
     // 页面加载时恢复方案数据。本地缓存已移除：后续在此处调用后端接口
@@ -337,6 +364,10 @@ export default {
           typeof plan.sticker.enabled === "boolean"
             ? plan.sticker.enabled
             : null;
+        sharedState.multiSticker =
+          typeof plan.sticker.multi === "boolean"
+            ? plan.sticker.multi
+            : false;
       }
     },
   },

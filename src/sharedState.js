@@ -34,4 +34,8 @@ export const sharedState = Vue.observable({
   // 是否启用组件：settings 页/方案 JSON 明确设置时为 true/false；
   // null = 未设置，首页保持本地手动勾选行为。
   stickerEnabled: null,
+  // 是否启用多个组件：settings 页配置。true 时预览页同一画布插入两次组件，
+  // 默认位置在图片上方和下方（自动桥接到刀线轮廓）。
+  multiSticker: false,
 });
+
