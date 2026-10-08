@@ -732,6 +732,12 @@ export default {
         this.o.hook = false;
         this.selectedHookId = option.id;
         this.hookName = option.label || "无挂扣";
+        // 清掉挂扣图资产：仅置 o.hook=false 不足以撤销上一方案残留的挂扣图
+        // （renderProduct 会照旧画 assets.hook），方案导入/切换必须彻底重置。
+        delete this.engine.assetOverrides.hook;
+        this.engine.assets.hook = null;
+        this.engine.assetData.hook = null;
+        this.engine.assetNames.hook = "";
         this.redraw();
         this.notifyHookChange();
         return;
@@ -816,6 +822,13 @@ export default {
     async applyLoadConfig(config) {
       for (const name of ["background", "hook"]) {
         const embedded = config.assets && config.assets[name];
+        if (name === "hook" && embedded && embedded.selection === "none") {
+          // 「无挂扣」是显式方案状态，必须完整重放：选「无挂扣」只改 o.hook
+          // 和 selectedHookId，不会清 engine 里的挂扣图，导入时若不重置，
+          // 上一方案的挂扣图会残留并被画到效果图上。
+          this.selectHook({ id: "none", label: "无挂扣", src: "" });
+          continue;
+        }
         if (name === "hook" && embedded && embedded.builtin) {
           const selected = this.hookOptions.find(
             (item) => item.id === embedded.selection,
