@@ -314,10 +314,18 @@ export default {
       this.dragging = null;
       this.handleState = null;
     },
-    // 无刀线板块需要 w/h 两个可拉伸尺寸；缺省（旧 JSON / 导入数据）时用
-    // $set 补齐，保证后续拖拽/输入赋值是响应式的。
+    // 板块字段响应式兜底：Vue 2 里给对象新增属性必须 $set，否则视图不更新。
+    // cutlineSvg / svgAspect 由上传刀线写入，w/h 由无刀线拉伸写入；这里把
+    // 四个字段在导入时就声明好，后续 anywhere 的直接赋值都能正常刷新。
     ensureStretchable(board) {
-      if (!board || board.cutlineSvg) return;
+      if (!board) return;
+      if (!Object.prototype.hasOwnProperty.call(board, "cutlineSvg")) {
+        this.$set(board, "cutlineSvg", null);
+      }
+      if (!Object.prototype.hasOwnProperty.call(board, "svgAspect")) {
+        this.$set(board, "svgAspect", null);
+      }
+      if (board.cutlineSvg) return;
       if (!Number.isFinite(Number(board.w))) {
         this.$set(board, "w", NO_CUTLINE_DEFAULT);
       }
@@ -514,17 +522,23 @@ export default {
       if (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") return;
       file.text().then((text) => {
         const size = readSvgSize(text);
-        board.cutlineSvg = text;
-        board.cutlineName = file.name;
-        board.sourceSize = size;
-        board.svgAspect = { w: size.width || 100, h: size.height || 100 };
+        // Vue 2：board 初始没有这些字段，直接赋值不响应式 → 占位框不会
+        // 立刻变成刀线尺寸（仍显示默认 160×160）。必须 $set 触发重渲染。
+        this.$set(board, "cutlineSvg", text);
+        this.$set(board, "cutlineName", file.name);
+        this.$set(board, "sourceSize", size);
+        this.$set(
+          board,
+          "svgAspect",
+          { w: size.width || 100, h: size.height || 100 },
+        );
         this.emitChange();
         const image = new Image();
         image.onload = () => {
-          board.svgAspect = {
+          this.$set(board, "svgAspect", {
             w: image.naturalWidth || board.svgAspect.w,
             h: image.naturalHeight || board.svgAspect.h,
-          };
+          });
           this.emitChange();
         };
         image.src = "data:image/svg+xml;utf8," + encodeURIComponent(text);
