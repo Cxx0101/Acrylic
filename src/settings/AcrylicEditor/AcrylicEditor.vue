@@ -317,7 +317,13 @@ export default {
       const shared = base || this.o;
       if (!board) return shared;
       // Per-plate overrides (material/contour/hook) beat the shared options.
-      const merged = board.o ? Object.assign({}, shared, board.o) : shared;
+      // 复制一份：merged 不能是 shared/this.o 的引用，否则下面的 hook 否决
+      // 会直接改写全局 o。
+      const merged = Object.assign({}, shared, board.o || {});
+      // 全局「无挂扣」是否决项（与首页 blockOptions 同一规则），多组件例外。
+      if (shared.hook === false) {
+        merged.hook = board.holes && board.holes.length > 1 ? true : false;
+      }
       if (!board.art || !board.art.box) return merged;
       // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）；优先于单孔。
       if (board.holes && board.holes.length) {
@@ -372,9 +378,18 @@ export default {
     setEditingBoard(id, o, name) {
       this.boardEditingId = id || null;
       this.boardEditingName = name || "";
-      this.boardEditingO = id
-        ? Object.assign({}, o || this.pickBoardODefaults())
-        : {};
+      // 未选中板块时也填一份全局参数（导入方案后SettingsPage 会调
+      // setEditingBoard(null) 清选中态），否则 boardEditingO 为空对象，
+      // 下拉的`boardEditingO.hook === false` 判定落空、回退显示「需要挂扣」，
+      // 与实际 o.hook=false 自相矛盾。
+      this.boardEditingO = Object.assign(
+        {},
+        this.pickBoardODefaults(),
+        o || {},
+      );
+      if (!id) {
+        this.boardEditingName = "";
+      }
     },
     applyBoardEditingO() {
       const engine = this.engine;
@@ -387,11 +402,37 @@ export default {
           board.shapeKey = "";
         }
       }
+      // 本页没有挂扣选择器，板块参数里的「挂扣」开关就是唯一入口，必须同时
+      // 驱动全局 o.hook：createConfig() 的 options.hook 与 assets.hook.selection
+      // 都读它，只写 board.o.hook 会让导出 JSON 里 options.hook 仍是 true、
+      // selection 为 null（还带着默认图），首页导入 applyLoadConfig 就把挂扣复原。
+      // 无选中板块时 boardEditingO 只是全局参数的镜像，不能反向覆盖全局
+      // （导入方案后 setEditingBoard(null) 会触发 watcher）。
+      if (this.boardEditingId) {
+        this.syncGlobalHook(this.boardEditingO && this.boardEditingO.hook);
+      }
       this.$emit("board-o-change", {
         id: this.boardEditingId,
         o: Object.assign({}, this.boardEditingO),
       });
       this.scheduleRedraw();
+    },
+    // 全局挂扣开关与挂扣资产保持自洽：false 时清图（renderProduct 会照旧画
+    // assets.hook），true 时恢复内置默认图。
+    syncGlobalHook(hook) {
+      if (typeof hook !== "boolean" || this.o.hook === hook) return;
+      if (hook) {
+        this.o.hook = true;
+        if (!this.engine.assets.hook) {
+          this.engine.assets.hook = this.engine.builtinAssets.hook || null;
+        }
+      } else {
+        this.o.hook = false;
+        delete this.engine.assetOverrides.hook;
+        this.engine.assets.hook = null;
+        this.engine.assetData.hook = null;
+        this.engine.assetNames.hook = "";
+      }
     },
     // Public API: replace the scene's plates. Each item is
     // { id?, src, hole?, shapeRegion?, transform? }; shapeRegion is a Blob.
@@ -534,9 +575,23 @@ export default {
           hook: {
             name: this.engine.assetNames.hook || "hook.png",
             dataUrl: this.engine.assetData.hook || null,
+            // 「无挂扣」是显式方案状态：首页 applyLoadConfig 靠 selection==="none"
+            // 识别并重放（否则导入后回退成需要挂扣）。本页无挂扣选择器，
+            // 由 o.hook 驱动，故 hook=false 时写出 selection="none"。
+            selection: this.o.hook ? null : "none",
           },
         },
       };
+    },
+    // 挂扣为「无」时清掉挂扣图资产：本页没有挂扣选择器，assets.hook 恒为内置
+    // 默认图，若不清，导出的 assets.hook.dataUrl 会带回一张图，首页导入侧
+    // applyLoadConfig 就会把挂扣复原成「需要挂扣」（与 o.hook=false 矛盾）。
+    clearHookAsset() {
+      this.o.hook = false;
+      delete this.engine.assetOverrides.hook;
+      this.engine.assets.hook = null;
+      this.engine.assetData.hook = null;
+      this.engine.assetNames.hook = "";
     },
     async loadConfig(config) {
       if (!config || typeof config !== "object" || !config.options)

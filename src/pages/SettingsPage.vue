@@ -128,7 +128,13 @@ export default {
   components: { AcrylicEditor, AppHeader, BoardLayoutEditor },
   data() {
     return {
-      options: { material: "glitter", intensity: 85, thickness: 4 },
+      // 首屏就以sharedState 为基线：AcrylicEditor.created 里会拿这份
+      // initial-options 调 setOptions，若此处只有材质三项，挂扣开关等
+      // 字段会回退 DEFAULTS（hook=true）。
+      options: Object.assign(
+        { material: "glitter", intensity: 85, thickness: 4 },
+        sharedState.sharedOptions || {},
+      ),
       editorOptions: null,
       editorReady: false,
       // 当前选中、正在编辑参数的板块 id。
@@ -179,8 +185,15 @@ export default {
     sharedOptions: {
       deep: true,
       handler(options) {
-        if (options && this.$refs.editor && this.$refs.editor.setOptions) {
-          this.$refs.editor.setOptions(Object.assign({}, options));
+        const editor = this.$refs.editor;
+        if (!options || !editor || !editor.setOptions) return;
+        editor.setOptions(Object.assign({}, options));
+        // keep-alive 二次进入本页时 onReady 不会重跑，挂扣资产要在这里同步清：
+        // 首页选「无挂扣」只改 o.hook，本页 assets.hook 仍是内置图，
+        // 导出的 assets.hook.dataUrl 会让首页导入侧把挂扣复原。
+        if (options.hook === false && editor.clearHookAsset) {
+          editor.clearHookAsset();
+          editor.redraw();
         }
       },
     },
@@ -188,6 +201,20 @@ export default {
   methods: {
     onReady() {
       this.editorReady = true;
+      // 效果参数（含 hook 挂扣开关）以 sharedState 为准再灌一次编辑器：
+      // 方案数据后续由后端接口提供（restorePlan 目前是空壳），此时 sharedOptions
+      // 可能为 null（首页没动过效果参数），那保持编辑器默认值即可。
+      const shared = sharedState.sharedOptions;
+      const editor = this.$refs.editor;
+      if (shared && editor && editor.setOptions) {
+        editor.setOptions(Object.assign({}, shared));
+        // 挂扣为「无」时同步清空本页 editor 的挂扣资产，保证 createConfig()
+        // 导出的 assets.hook 与 options.hook 自洽（否则首页导入会把挂扣复原）。
+        if (shared.hook === false && editor.clearHookAsset) {
+          editor.clearHookAsset();
+          editor.redraw();
+        }
+      }
       this.restorePlan();
     },
     onChange(options) {
@@ -195,7 +222,7 @@ export default {
       this.syncSharedOptions(options);
     },
     syncSharedOptions(options) {
-      if (!options) return;
+      if (!options || !this.editorReady) return;
       if (JSON.stringify(sharedState.sharedOptions) === JSON.stringify(options))
         return;
       sharedState.sharedOptions = options;
@@ -210,7 +237,18 @@ export default {
     buildPlan() {
       const editor = this.$refs.editor;
       if (!editor || !editor.createConfig) return null;
-      const plan = assemblePlan(editor.createConfig(), this.layoutBoards);
+      const boards = JSON.parse(JSON.stringify(this.layoutBoards));
+      // 挂扣归一化：全局 o.hook 是最终裁决（首页选择器 / 本页板块下拉都写它），
+      // 但板块 o.hook 在首页 blockOptions 里优先级更高——若残留 true，导入后
+      // 会把「无挂扣」覆盖回「需要挂扣」。故导出时按全局值对齐所有板块。
+      const hook = editor.o ? editor.o.hook : null;
+      if (typeof hook === "boolean") {
+        boards.forEach((b) => {
+          if (!b.o) this.$set(b, "o", {});
+          b.o.hook = hook;
+        });
+      }
+      const plan = assemblePlan(editor.createConfig(), boards);
       plan.sticker = {
         patterns: JSON.parse(JSON.stringify(sharedState.stickerPatterns)),
         componentSize: sharedState.componentSize,

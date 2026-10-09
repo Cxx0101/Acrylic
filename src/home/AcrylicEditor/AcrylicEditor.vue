@@ -362,7 +362,15 @@ export default {
       const shared = base || this.o;
       if (!board) return shared;
       // Per-plate overrides (material/contour/hook) beat the shared options.
-      const merged = board.o ? Object.assign({}, shared, board.o) : shared;
+      // 复制一份：merged 不能是 shared/this.o 的引用，否则下面的 hook 否决
+      // 会直接改写全局 o。
+      const merged = Object.assign({}, shared, board.o || {});
+      // 全局「无挂扣」是否决项：方案 options.hook=false 时，板块 o.hook 的
+      // 残留 true 不能把它翻回来（导入旧方案 / 板块参数先于全局设置时会出现）。
+      // 多组件例外：多个挂孔必须画出挂件，否则孔位上没有实体。
+      if (shared.hook === false) {
+        merged.hook = board.holes && board.holes.length > 1 ? true : false;
+      }
       if (!board.art || !board.art.box) return merged;
       // 多组件：同一画布多个挂孔（预览页 image 上/下方各一）；优先于单孔。
       if (board.holes && board.holes.length) {
