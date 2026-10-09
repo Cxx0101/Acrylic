@@ -2331,7 +2331,85 @@ export default {
       context.drawImage(backing, 0, 0, width, height);
       // Top: red cut line and independent SVG closed-path details.
       context.drawImage(path, 0, 0, width, height);
-      return this.canvasToPngBlob(canvas);
+      const blob = await this.canvasToPngBlob(canvas);
+      // Preview-only boost: resaturate + dilate the red cut line so the
+      // on-canvas outline stays crisp even when its solid core is thinner
+      // than one display pixel (interpolation otherwise washes it to pale
+      // pink). Exports and designStates keep the untouched blob; the boosted
+      // twin is paired with it in a WeakMap and only insertImage consumes it.
+      try {
+        const boostCanvas = document.createElement("canvas");
+        boostCanvas.width = width;
+        boostCanvas.height = height;
+        const boostContext = boostCanvas.getContext("2d");
+        if (artwork) {
+          boostContext.drawImage(artwork, 0, 0, width, height);
+        }
+        boostContext.drawImage(backing, 0, 0, width, height);
+        boostContext.drawImage(
+          this.buildBoostedCutLineCanvas(path, width, height),
+          0,
+          0,
+        );
+        const previewBlob = await this.canvasToPngBlob(boostCanvas);
+        this.ensurePreviewBlobMap().set(blob, previewBlob);
+      } catch (error) {
+        // Boost is cosmetic; never let it break the compose pipeline.
+        console.warn("cutline preview boost skipped:", error);
+      }
+      return blob;
+    },
+
+    // Resaturated + 1px-dilated copy of the pure cut-line layer. The path
+    // layer holds nothing but red cut-line pixels, so a saturation pass
+    // cannot touch artwork colors; the dilation just widens the visible
+    // stroke by one source pixel per side for screen readability.
+    buildBoostedCutLineCanvas(pathElement, width, height) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(pathElement, 0, 0, width, height);
+      const imageData = context.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        // Red-family pixels only (cut line / red SVG details); leave any
+        // hypothetical non-red pixel untouched.
+        if (data[i + 3] > 0 && data[i] > data[i + 1] && data[i] > data[i + 2]) {
+          data[i] = 227;
+          data[i + 1] = 76;
+          data[i + 2] = 87;
+          data[i + 3] = 255;
+        }
+      }
+      const source = data.slice();
+      const stride = width * 4;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const offset = (y * width + x) * 4;
+          if (source[offset + 3]) continue;
+          const hasNeighbor =
+            (x > 0 && source[offset - 4 + 3]) ||
+            (x < width - 1 && source[offset + 4 + 3]) ||
+            (y > 0 && source[offset - stride + 3]) ||
+            (y < height - 1 && source[offset + stride + 3]);
+          if (hasNeighbor) {
+            data[offset] = 227;
+            data[offset + 1] = 76;
+            data[offset + 2] = 87;
+            data[offset + 3] = 220;
+          }
+        }
+      }
+      context.putImageData(imageData, 0, 0);
+      return canvas;
+    },
+
+    ensurePreviewBlobMap() {
+      if (!this._previewBlobMap) {
+        this._previewBlobMap = new WeakMap();
+      }
+      return this._previewBlobMap;
     },
 
     async composeContentAndPath(contentBlob, pathBlob) {
@@ -4674,8 +4752,15 @@ export default {
       } = {},
     ) {
       if (!blob) return;
+      // Display twin: the resaturated cut-line boost produced alongside this
+      // exact blob by composeLayeredResult. Same dimensions, so every scale /
+      // snap consumer of the background image is unaffected; exports and
+      // designStates keep the untouched original.
+      const previewBlobMap = this._previewBlobMap;
+      const displayBlob =
+        (previewBlobMap && previewBlobMap.get(blob)) || blob;
       const [image, contourImage] = await Promise.all([
-        this.loadFabricImage(blob),
+        this.loadFabricImage(displayBlob),
         this.pathBlob ? this.loadFabricImage(this.pathBlob) : null,
       ]);
       const metrics = this.getFabricPreviewMetrics(
