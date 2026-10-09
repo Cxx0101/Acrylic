@@ -217,6 +217,7 @@ import {
   getTransformedMaskCoverage,
   insetMaskPixels,
   mergeLocalContourPixels,
+  narrowDetailBandsToWidth,
   selectSmoothContourPoint,
 } from "../../utils/home/localContour";
 
@@ -3209,6 +3210,18 @@ export default {
         detailPixels.data[offset + 1] = 76;
         detailPixels.data[offset + 2] = 87;
         detailPixels.data[offset + 3] = data[offset + 3];
+      }
+      if (measuredCutLine > 0) {
+        // 像素级兜底：SVG stroke 归一化只覆盖 data:image/svg+xml 的显式
+        // stroke-width 属性；位图 / fill 环染红后仍继承源图形的任意线宽，
+        // 比主刀线粗。按连通域把超宽细节带收窄到主刀线宽（中心线不动），
+        // 已归一化的 SVG 带宽在容差内不会被改动。
+        narrowDetailBandsToWidth(
+          detailPixels.data,
+          detailCanvas.width,
+          detailCanvas.height,
+          measuredCutLine,
+        );
       }
       detailContext.clearRect(0, 0, detailCanvas.width, detailCanvas.height);
       detailContext.putImageData(detailPixels, 0, 0);

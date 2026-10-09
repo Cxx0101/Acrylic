@@ -168,6 +168,108 @@ export function insetMaskPixels(source, width, height, radius) {
   return result;
 }
 
+// 把「细节带状图形」的线宽归一到 targetWidth（保持中心线不动）：合并组件
+// 时非 SVG 来源（位图 / fill 环）的细节形状直接染红会继承源图形的任意线宽，
+// 比主刀线粗。对每个独立连通域以最厚处的内切半径为基准做带通保留，域内
+// 距边界超过「半宽 - target/2」的像素才保留——均匀环带收窄后正好是
+// targetWidth 宽、中心线不变。不均匀/极细形状带 8% 保护阈值，切不动的
+// 保持原样。
+export function narrowDetailBandsToWidth(source, width, height, targetWidth) {
+  const target = Math.max(1, Number(targetWidth) || 0);
+  if (!target || width < 1 || height < 1) return;
+  const pixelCount = width * height;
+  const labels = new Int32Array(pixelCount);
+  const domains = [];
+  const queue = new Int32Array(pixelCount);
+  for (let start = 0; start < pixelCount; start += 1) {
+    if (labels[start] || source[start * 4 + 3] < 32) continue;
+    const id = domains.length + 1;
+    const members = [];
+    let head = 0;
+    let tail = 0;
+    labels[start] = id;
+    queue[tail++] = start;
+    members.push(start);
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % width;
+      const y = (index - x) / width;
+      const push = (next) => {
+        if (labels[next] || source[next * 4 + 3] < 32) return;
+        labels[next] = id;
+        queue[tail++] = next;
+        members.push(next);
+      };
+      if (x > 0) push(index - 1);
+      if (x < width - 1) push(index + 1);
+      if (y > 0) push(index - width);
+      if (y < height - 1) push(index + width);
+    }
+    domains.push(members);
+  }
+  for (const members of domains) {
+    const distances = new Float32Array(pixelCount);
+    for (const index of members) {
+      const x = index % width;
+      const y = (index - x) / width;
+      distances[index] = Math.min(x + 1, y + 1, width - x, height - y);
+    }
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const index = y * width + x;
+        if (!distances[index]) continue;
+        if (x > 0) {
+          distances[index] = Math.min(distances[index], distances[index - 1] + 1);
+        }
+        if (y > 0) {
+          distances[index] = Math.min(distances[index], distances[index - width] + 1);
+          if (x > 0) {
+            distances[index] = Math.min(distances[index], distances[index - width - 1] + Math.SQRT2);
+          }
+          if (x + 1 < width) {
+            distances[index] = Math.min(distances[index], distances[index - width + 1] + Math.SQRT2);
+          }
+        }
+      }
+    }
+    for (let y = height - 1; y >= 0; y -= 1) {
+      for (let x = width - 1; x >= 0; x -= 1) {
+        const index = y * width + x;
+        if (!distances[index]) continue;
+        if (x + 1 < width) {
+          distances[index] = Math.min(distances[index], distances[index + 1] + 1);
+        }
+        if (y + 1 < height) {
+          distances[index] = Math.min(distances[index], distances[index + width] + 1);
+          if (x > 0) {
+            distances[index] = Math.min(distances[index], distances[index + width - 1] + Math.SQRT2);
+          }
+          if (x + 1 < width) {
+            distances[index] = Math.min(distances[index], distances[index + width + 1] + Math.SQRT2);
+          }
+        }
+      }
+    }
+    let maxDistance = 0;
+    for (const index of members) {
+      if (distances[index] > maxDistance) maxDistance = distances[index];
+    }
+    // 已经不比刀线粗（含 25% 容差）就不动，避免误伤抗锯齿细节
+    if (maxDistance * 2 <= target * 1.25) continue;
+    const threshold = maxDistance - target / 2;
+    let kept = 0;
+    for (const index of members) {
+      if (distances[index] > threshold) kept += 1;
+    }
+    if (kept < members.length * 0.08) continue;
+    for (const index of members) {
+      if (distances[index] <= threshold) {
+        source[index * 4 + 3] = 0;
+      }
+    }
+  }
+}
+
 export function getMaximumDiameterPair(points, preferredNormal = null) {
   if (!points || points.length < 2) return null;
   const unique = Array.from(
