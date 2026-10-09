@@ -83,7 +83,12 @@
                   type="button"
                   :class="{ active: selectedStickerAsset === asset.id }"
                   :aria-checked="selectedStickerAsset === asset.id"
-                  :disabled="processing || !enableEdgeSticker"
+                  :disabled="
+                    processing ||
+                    finish ||
+                    isFinalizingComponent ||
+                    !enableEdgeSticker
+                  "
                   role="radio"
                   :title="asset.label"
                   @click="selectStickerPattern(asset.id)"
@@ -1690,6 +1695,11 @@ export default {
       if (
         patternId === this.selectedStickerAsset ||
         this.processing ||
+        this.isFinalizingComponent ||
+        // 合并完成后组件已并入刀线（画布上不再有贴片对象），此时切换
+        // 图案会经 changeStickerPattern 的多组件分支重新 addAllStickers，
+        // 在已合并的图上再叠出一组组件——必须禁用。
+        this.finish ||
         this.isBackFace() ||
         !this.enableEdgeSticker
       ) {
@@ -1724,6 +1734,9 @@ export default {
 
     async changeStickerPattern() {
       if (!this.enableEdgeSticker) return;
+      // 合并进行中/已完成时禁止重建贴片：合并完成后画布上已无贴片对象，
+      // 多组件分支会无条件 addAllStickers，在已合并的图上叠出新组件。
+      if (this.isFinalizingComponent || this.finish) return;
       // 并发重入护栏：方案导入会同时触发 patterns 变化与 multiSticker 变化
       // 两个 watcher，均会调本方法；异步重建期间不加锁会重复建贴片。
       if (this.stickerRebuilding) return;
