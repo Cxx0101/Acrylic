@@ -3656,6 +3656,43 @@ export default {
       return this.canvasToPngBlob(canvas);
     },
 
+    // 测量 pathBlob 上主体红线的实际源像素厚度：左右边缘中段连续红线段
+    // 长度取中位数（避开上下方向可能存在的凸台；凸台占比小，中位数免疫）。
+    async measureCutLineThickness(pathBlob) {
+      if (!pathBlob) return 0;
+      const image = await this.loadFabricImage(pathBlob);
+      const source = image.getElement ? image.getElement() : image._element;
+      const width = source.naturalWidth || source.width;
+      const height = source.naturalHeight || source.height;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(source, 0, 0, width, height);
+      const { data } = context.getImageData(0, 0, width, height);
+      const alphaAt = (x, y) => data[(y * width + x) * 4 + 3];
+      const runs = [];
+      for (let y = Math.floor(height * 0.3); y < Math.floor(height * 0.7); y += 2) {
+        let x = 0;
+        while (x < width && alphaAt(x, y) <= 40) x += 1;
+        if (x >= width) continue;
+        let len = 0;
+        while (x + len < width && alphaAt(x + len, y) > 40) len += 1;
+        if (len > 0) runs.push(len);
+      }
+      for (let y = Math.floor(height * 0.3); y < Math.floor(height * 0.7); y += 2) {
+        let x = width - 1;
+        while (x >= 0 && alphaAt(x, y) <= 40) x -= 1;
+        if (x < 0) continue;
+        let len = 0;
+        while (x - len >= 0 && alphaAt(x - len, y) > 40) len += 1;
+        if (len > 0) runs.push(len);
+      }
+      if (!runs.length) return 0;
+      runs.sort((a, b) => a - b);
+      return runs[Math.floor(runs.length / 2)];
+    },
+
     async rebuildStickerCutLine(position, { pathBlob = this.pathBlob } = {}) {
       const originalInterior = await this.getCutLineInteriorMask(pathBlob);
       const width = originalInterior.width;
@@ -3664,10 +3701,16 @@ export default {
         0.01,
         Math.abs(this.fabricCanvas.backgroundImage.scaleX || 1),
       );
-      const cutLine = Math.max(
+      const fallbackCutLine = Math.max(
         0,
         Math.round((Number(this.form.cutLine) || 0) / previewScale),
       );
+      // 主体红线的真实源宽与 bgScale 换算值可能差 10-30%：主体线宽来自
+      // generate 时的 fitScale 基准，而 backgroundImage.scaleX 还受画布
+      // 显示预算与 pad 累积影响。直接测量 pathBlob 主体红线厚度，保证
+      // 凸台线宽与主体完全一致（组件的轮廓不再比图案轮廓粗）。
+      const measuredCutLine = await this.measureCutLineThickness(pathBlob);
+      const cutLine = measuredCutLine > 0 ? measuredCutLine : fallbackCutLine;
       // The component and the original contour meet at two small concave
       // corners. Use a slightly broader local radius than the line-width
       // inset so the joined contour eases into both shapes instead of
