@@ -3107,6 +3107,42 @@ export default {
       });
     },
 
+    // 组件 SVG 的描边宽度归一化：合并后组件非主区域的细节线（内环等）直接
+    // 染红 SVG 原始描边，宽度与刀线无关（可能比主刀线粗一倍）。这里把 SVG
+    // 的 stroke-width 统一改成「刀线源宽换算回 SVG 坐标系」的值，重新渲染
+    // 一份专供刀线细节使用；画布上的组件贴片显示不受影响。
+    async buildNormalizedStrokeDetailSource(stickerWidthSrc, cutLineSrc) {
+      if (!cutLineSrc || cutLineSrc <= 0) return null;
+      const src = this.getStickerImageUrl();
+      if (!src || !/^data:image\/svg\+xml/i.test(src)) return null;
+      try {
+        const commaIndex = src.indexOf(",");
+        const meta = src.slice(0, commaIndex);
+        const payload = src.slice(commaIndex + 1);
+        const svgText = /base64/i.test(meta)
+          ? decodeURIComponent(escape(atob(payload)))
+          : decodeURIComponent(payload);
+        const viewBoxMatch = svgText.match(/viewBox\s*=\s*["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s*["']/i);
+        const widthMatch = svgText.match(/<svg[^>]*\swidth\s*=\s*["']([\d.]+)["']/i);
+        const svgUnits = viewBoxMatch
+          ? parseFloat(viewBoxMatch[1])
+          : widthMatch
+            ? parseFloat(widthMatch[1])
+            : null;
+        if (!svgUnits || svgUnits <= 0) return null;
+        const targetStroke = cutLineSrc / (stickerWidthSrc / svgUnits);
+        if (!Number.isFinite(targetStroke) || targetStroke <= 0) return null;
+        const normalized = svgText.replace(
+          /stroke-width\s*=\s*["'][^"']*["']/gi,
+          `stroke-width="${targetStroke.toFixed(2)}"`,
+        );
+        return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(normalized)));
+      } catch (error) {
+        console.warn("normalize sticker detail stroke skipped:", error);
+        return null;
+      }
+    },
+
     async addStickerInnerDetails(blob, { x, y, width, height, angle = 0 }) {
       const image = await this.loadFabricImage(blob);
       const source = image.getElement ? image.getElement() : image._element;
@@ -3118,9 +3154,24 @@ export default {
       const outputContext = outputCanvas.getContext("2d");
       outputContext.drawImage(source, 0, 0, outputWidth, outputHeight);
 
-      const stickerElement = this.edgeSticker.getElement
+      // 细节线宽必须与主刀线一致：优先用 stroke 归一化后的 SVG 重渲染；
+      // 非 SVG 图案或归一化失败时回退原始贴片元素（保持旧行为）。
+      let stickerElement = this.edgeSticker.getElement
         ? this.edgeSticker.getElement()
         : this.edgeSticker._element;
+      const measuredCutLine = await this.measureCutLineThickness(blob);
+      if (measuredCutLine > 0) {
+        const normalizedSource = await this.buildNormalizedStrokeDetailSource(
+          width,
+          measuredCutLine,
+        );
+        if (normalizedSource) {
+          const normalizedImage = await this.loadFabricImage(normalizedSource);
+          stickerElement = normalizedImage.getElement
+            ? normalizedImage.getElement()
+            : normalizedImage._element;
+        }
+      }
       const detailCanvas = document.createElement("canvas");
       detailCanvas.width = Math.max(1, Math.ceil(width));
       detailCanvas.height = Math.max(1, Math.ceil(height));
