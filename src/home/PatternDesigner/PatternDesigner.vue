@@ -1454,8 +1454,18 @@ export default {
       const radians = fabric.util.degreesToRadians(target.angle || 0);
       const cos = Math.cos(radians);
       const sin = Math.sin(radians);
-      const centerX = (center.x - background.left) / scaleX;
-      const centerY = (center.y - background.top) / scaleY;
+      // boundaryMask follows the CURRENT pathBlob, which during a multi
+      // sticker merge is already padded by earlier passes. Component centers
+      // are canvas→source coordinates without that padding, so the accumulated
+      // pad (accumStickerOffset) must be added here; otherwise every pass after
+      // the first sees a shifted die line, misclassifies the attached sticker
+      // as detached and snaps it to a random spot on the wrong contour.
+      const offsetX = this.accumStickerOffset ? this.accumStickerOffset.left : 0;
+      const offsetY = this.accumStickerOffset ? this.accumStickerOffset.top : 0;
+      const centerX =
+        (center.x - background.left) / scaleX + offsetX;
+      const centerY =
+        (center.y - background.top) / scaleY + offsetY;
       let overlapPixels = 0;
       for (let y = 0; y < mask.height; y += 1) {
         for (let x = 0; x < mask.width; x += 1) {
@@ -1792,6 +1802,14 @@ export default {
         left = this.snapContour[0].x;
         top = this.snapContour[0].y;
       }
+      // 多组件：下方组件旋转 180°（头朝外），与上方组件镜像对称。
+      // 图案有方向性（心形/水滴等）时若同方向放置，上方组件露出的是圆弧
+      // 头部、下方露出的是底尖，合并凸台一个圆弧一个 V 尖，看起来就是
+      // 「下面组件生成轮廓跟上面不一样」；旋转后上下凸台形状一致。
+      const defaultAngle =
+        this.multiSticker && position === "bottom" && !currentPosition
+          ? 180
+          : 0;
       sticker.set({
         left,
         top,
@@ -1801,7 +1819,7 @@ export default {
         stickerPattern: this.stickerPattern,
         contourSnapRadiusRatio: 0.5,
         contourSnapRadius: this.stickerSize * 0.5,
-        angle: currentPosition ? currentPosition.angle : 0,
+        angle: currentPosition ? currentPosition.angle : defaultAngle,
         hasControls: true,
         hasBorders: true,
         borderColor: "#285348",
@@ -3979,6 +3997,9 @@ export default {
       this.outerPathBlob = null;
       this.replacementFrame = null;
       this.preMergeState = null;
+      // New image → new unpadded pathBlob. A stale accumulated pad would
+      // desynchronise the snap overlap check from the fresh boundary mask.
+      this.accumStickerOffset = { left: 0, top: 0 };
       this.finish = false;
 
       try {
@@ -4531,6 +4552,9 @@ export default {
         this.replacementFrame = previous.replacementFrame || null;
         this.designHole = previous.designHole || null;
         this.designHoles = (previous.designHoles || []).slice();
+        // Restored pathBlob is the pre-merge, unpadded layer — drop the
+        // accumulated pad so the snap overlap check stays synchronised.
+        this.accumStickerOffset = { left: 0, top: 0 };
         await this.insertImage(previous.resultBlob);
         // 多组件：insertImage 已按当前模式重建全部组件（主 + 下方），
         // 这里按快照逐个还原位置/角度/尺寸；单组件走旧的单孔恢复路径。
