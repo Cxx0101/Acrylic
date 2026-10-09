@@ -1765,6 +1765,18 @@ export default {
     // 按当前模式创建组件：单组件 1 个；多组件 2 个，分别贴在图案刀线轮廓的
     // 最上 / 最下点（与单组件一致，必须与图片相交、不得脱离图外）。
     async addAllStickers() {
+      // 重建前先清掉画布上现存的全部组件（引用 + fabric 画布对象都要清）：
+      // 连续上传新图等路径会在组件已存在时再次进入本方法，而
+      // addDefaultSticker 在多组件模式下只覆盖引用、不移除画布上的旧对象
+      // （edgeStickers 还是 push 追加），不清理就会新旧叠加。
+      if (this.edgeSticker) {
+        this.fabricCanvas.remove(this.edgeSticker);
+        this.edgeSticker = null;
+      }
+      this.edgeStickers.forEach((sticker) =>
+        this.fabricCanvas.remove(sticker),
+      );
+      this.edgeStickers = [];
       await this.addDefaultSticker({ position: "top" });
       if (this.multiSticker) {
         await this.addDefaultSticker({ position: "bottom" });
