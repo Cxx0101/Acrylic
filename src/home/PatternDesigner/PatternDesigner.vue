@@ -996,17 +996,22 @@ export default {
         fallbackBounds,
       );
       const bounds = { ...contourBounds };
-      [this.edgeSticker, this.interfaceTab].forEach((object) => {
-        if (!object) return;
-        const rectangle = object.getBoundingRect(true, true);
-        bounds.left = Math.min(bounds.left, rectangle.left);
-        bounds.top = Math.min(bounds.top, rectangle.top);
-        bounds.right = Math.max(bounds.right, rectangle.left + rectangle.width);
-        bounds.bottom = Math.max(
-          bounds.bottom,
-          rectangle.top + rectangle.height,
-        );
-      });
+      // bounds 必须覆盖「图片轮廓 + 画布上全部组件」，多组件模式下方的组件
+      // （edgeStickers）同样计入：否则下方组件的外伸量不参与 fit 计算，
+      // 图片不会像单组件那样缩小来给组件腾空间，组件就会露到图片/白板外。
+      this.allStickerObjects()
+        .concat(this.interfaceTab || [])
+        .forEach((object) => {
+          if (!object) return;
+          const rectangle = object.getBoundingRect(true, true);
+          bounds.left = Math.min(bounds.left, rectangle.left);
+          bounds.top = Math.min(bounds.top, rectangle.top);
+          bounds.right = Math.max(bounds.right, rectangle.left + rectangle.width);
+          bounds.bottom = Math.max(
+            bounds.bottom,
+            rectangle.top + rectangle.height,
+          );
+        });
       return bounds;
     },
 
@@ -1017,13 +1022,25 @@ export default {
       const bounds = this.getArtworkBounds();
       const width = Math.max(1, bounds.right - bounds.left);
       const height = Math.max(1, bounds.bottom - bounds.top);
-      const targetSize =
-        Math.min(this.fabricCanvas.width, this.fabricCanvas.height) * 0.7;
-      const factor = Math.min(1, targetSize / Math.max(width, height));
+      const canvasWidth = this.fabricCanvas.width;
+      const canvasHeight = this.fabricCanvas.height;
+      // 构图约束：整组内容（图片 + 全部组件）缩放后不应占满画布，留出余量。
+      const targetSize = Math.min(canvasWidth, canvasHeight) * 0.7;
       const centerX = (bounds.left + bounds.right) / 2;
       const centerY = (bounds.top + bounds.bottom) / 2;
-      const canvasCenterX = this.fabricCanvas.width / 2;
-      const canvasCenterY = this.fabricCanvas.height / 2;
+      const canvasCenterX = canvasWidth / 2;
+      const canvasCenterY = canvasHeight / 2;
+      // bounds 已含全部组件（见 getArtworkBounds），所以此处按bounds 的
+      // 最大跨度即可覆盖「组件不超出图片」这一诉求，无需额外 overhang。
+      const span = Math.max(width, height);
+      const factor = Math.min(
+        1,
+        Math.min(
+          targetSize / span,
+          (canvasWidth * 0.96) / width,
+          (canvasHeight * 0.96) / height,
+        ),
+      );
       const scaleObject = (object) => {
         if (!object) return;
         object.set({
@@ -1034,24 +1051,28 @@ export default {
         });
         object.setCoords();
       };
+      // 缩放的锚点是 bounds 中心 → 画布中心（见 scaleObject），所以缩放后
+      // 整组内容自然居中，无需二次对齐。
 
       scaleObject(background);
-      scaleObject(this.edgeSticker);
-      scaleObject(this.interfaceGuide);
-      scaleObject(this.interfaceTab);
-      if (this.edgeSticker) {
-        this.edgeSticker.contourSnapRadius *= factor;
-        if (this.edgeSticker.intersectingStickerCenter) {
-          this.edgeSticker.intersectingStickerCenter = {
+      // 多组件：必须缩放全部组件（edgeSticker + edgeStickers），只缩主组件的话
+      // 下方组件不跟着缩，图片缩小后它就露到图片外面去了（与单组件行为对齐）。
+      this.allStickerObjects().forEach((sticker) => {
+        scaleObject(sticker);
+        sticker.contourSnapRadius *= factor;
+        if (sticker.intersectingStickerCenter) {
+          sticker.intersectingStickerCenter = {
             x:
               canvasCenterX +
-              (this.edgeSticker.intersectingStickerCenter.x - centerX) * factor,
+              (sticker.intersectingStickerCenter.x - centerX) * factor,
             y:
               canvasCenterY +
-              (this.edgeSticker.intersectingStickerCenter.y - centerY) * factor,
+              (sticker.intersectingStickerCenter.y - centerY) * factor,
           };
         }
-      }
+      });
+      scaleObject(this.interfaceGuide);
+      scaleObject(this.interfaceTab);
       this.snapContour = this.snapContour.map((point) => ({
         ...point,
         x: canvasCenterX + (point.x - centerX) * factor,
@@ -1060,6 +1081,11 @@ export default {
       if (this.interfaceTab && this.interfaceGuide) {
         this.keepInterfaceTabAttached(this.interfaceTab);
       }
+      // 轮廓点已按factor 缩放，组件与轮廓的相对关系会失效，需重新吸附，
+      // 否则缩小后组件会脱离刀线（多组件场景下方组件最明显）。
+      this.allStickerObjects().forEach((sticker) =>
+        this.snapObjectToContour(sticker),
+      );
       this.setPhysicalDimensions(width * factor, height * factor);
       this.updateDimensionAnnotation();
       this.fabricCanvas.requestRenderAll();
@@ -1795,10 +1821,11 @@ export default {
       } else {
         this.edgeSticker = sticker;
       }
+      // applyStickerSize 内部已会 fitArtworkToDimensionLimit（统一缩放全部组件
+      // 并重新吸附），此处只做吸附 + 选中，不再重复 fit。
       await this.applyStickerSize({ refreshSvg: false });
       this.snapObjectToContour(sticker);
       this.fabricCanvas.setActiveObject(sticker);
-      this.fitArtworkToDimensionLimit();
     },
 
     async toggleEdgeSticker() {
